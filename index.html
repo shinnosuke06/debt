@@ -1,0 +1,974 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>🎀 ふたりのきろく 🎀</title>
+  <!-- Tailwind CSS (スタイリング用) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Vue.js (画面の動き用) -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <!-- Chart.js (グラフ用) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- LZString (短い文字列バックアップ用) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
+  <!-- 可愛い丸ゴシックフォント -->
+  <link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;500;700&display=swap" rel="stylesheet">
+  
+  <style>
+    body { 
+      font-family: 'Zen Maru Gothic', sans-serif; 
+      background-color: #fdf2f8; /* 薄いピンクの背景 */
+      color: #831843; 
+    }
+    .glass-card { 
+      background: rgba(255, 255, 255, 0.85); 
+      backdrop-filter: blur(8px); 
+      border: 1px solid rgba(254, 215, 226, 0.5); 
+    }
+    [v-cloak] { display: none; }
+    
+    /* スクロールバーを隠す */
+    ::-webkit-scrollbar { width: 0px; background: transparent; }
+
+    /* 入力時に画面がズーム（寄る）してしまうのを防止 ＆ はみ出し防止 */
+    input[type="text"], input[type="number"], input[type="date"], textarea {
+      font-size: 16px !important;
+      box-sizing: border-box !important;
+      width: 85% !important;
+      max-width: 100% !important;
+      display: block !important;
+      margin: 0 auto !important;
+    }
+  </style>
+</head>
+<body>
+
+<div id="app" v-cloak class="max-w-md mx-auto min-h-screen relative pb-20">
+
+  <!-- ================= ヘッダー ================= -->
+  <div class="fixed top-0 w-full max-w-md bg-pink-100/90 backdrop-blur shadow-sm z-20 px-4 py-3 flex justify-between items-center rounded-b-3xl">
+    <h1 class="text-lg font-bold text-pink-500 tracking-wide">🎀 ふたりのきろく</h1>
+    <button v-if="!viewOnly && gasUrl" @click="saveToGas" class="bg-gradient-to-r from-pink-400 to-rose-400 text-white px-4 py-1.5 rounded-full text-xs font-bold shadow-md shadow-pink-200 active:scale-95 transition">
+      ☁️ 雲にほぞん
+    </button>
+  </div>
+
+  <!-- ================= メインコンテンツ ================= -->
+  <div class="pt-20 px-4 space-y-6">
+
+    <!-- 🌟 ホームタブ (一覧と残額) 🌟 -->
+    <div v-show="currentTab === 'home'" class="animate-fade-in">
+      
+      <!-- のこり総額カード -->
+      <div class="bg-gradient-to-br from-pink-400 to-rose-300 rounded-3xl p-6 text-white shadow-xl shadow-pink-200 text-center relative overflow-hidden">
+          <div class="text-pink-50 text-sm font-medium mb-1 drop-shadow-sm">お返しする のこり総額 💸</div>
+          <div class="text-4xl font-bold font-mono tracking-tighter drop-shadow-md">
+            ¥{{ totalRemain.toLocaleString() }}
+          </div>
+          <div class="text-[10px] text-pink-100 mt-2">※毎月の定期的なものは含まれていません</div>
+          <!-- キラキラの装飾 -->
+          <div class="absolute -top-6 -right-6 w-24 h-24 bg-white opacity-10 rounded-full"></div>
+          <div class="absolute bottom-2 left-2 text-3xl opacity-20">💖</div>
+      </div>
+
+      <!-- 定期的なものの支払い合計 (存在する場合のみ表示) -->
+      <div v-if="regularPaidTotal > 0" @click="filterStatus = 'regular'" class="mt-4 bg-purple-50 border border-purple-100 rounded-2xl p-4 text-purple-700 shadow-sm flex justify-between items-center cursor-pointer hover:bg-purple-100 active:scale-95 transition">
+        <div class="text-sm font-bold flex items-center gap-1">📱 定期的なものの支払い合計</div>
+        <div class="text-xl font-bold font-mono flex items-center gap-2">
+          ¥{{ regularPaidTotal.toLocaleString() }}
+          <span class="text-sm text-purple-300">👉</span>
+        </div>
+      </div>
+
+      <!-- リスト部分 -->
+      <div class="mt-8 space-y-4">
+        <div class="flex items-center justify-between pl-2">
+          <h2 class="text-md font-bold text-pink-600 flex items-center gap-2">
+            <span>📝</span> これまでのきろく
+          </h2>
+          <!-- フィルター機能 -->
+          <div class="flex bg-pink-100/50 rounded-full p-1 border border-pink-200 text-[10px] font-bold overflow-x-auto">
+            <button @click="filterStatus = 'all'" class="px-3 py-1.5 rounded-full transition whitespace-nowrap" :class="filterStatus === 'all' ? 'bg-white text-pink-600 shadow-sm' : 'text-pink-400'">すべて</button>
+            <button @click="filterStatus = 'incomplete'" class="px-3 py-1.5 rounded-full transition whitespace-nowrap" :class="filterStatus === 'incomplete' ? 'bg-white text-pink-600 shadow-sm' : 'text-pink-400'">返済中</button>
+            <button @click="filterStatus = 'completed'" class="px-3 py-1.5 rounded-full transition whitespace-nowrap" :class="filterStatus === 'completed' ? 'bg-white text-emerald-500 shadow-sm' : 'text-pink-400'">完済</button>
+            <button @click="filterStatus = 'regular'" class="px-3 py-1.5 rounded-full transition whitespace-nowrap" :class="filterStatus === 'regular' ? 'bg-white text-purple-600 shadow-sm' : 'text-pink-400'">定期</button>
+          </div>
+        </div>
+        
+        <!-- 各アイテム -->
+        <div v-for="debt in filteredDebts" :key="debt.id" 
+             class="glass-card rounded-2xl p-4 shadow-sm relative border-t-4 transition-all" 
+             :class="debt.isRegular ? 'border-purple-300' : 'border-pink-300'">
+           
+           <div class="flex justify-between items-start mb-2">
+             <div class="flex-1 pr-2">
+               <div class="flex items-center gap-2 mb-1">
+                 <span v-if="debt.isRegular" class="bg-purple-100 text-purple-600 text-[10px] px-2 py-0.5 rounded-full font-bold">定期</span>
+                 <span class="text-xs text-gray-400 font-mono">{{ formatDate(debt.date) }}</span>
+               </div>
+               <div class="font-bold text-gray-700 text-sm leading-tight">{{ debt.title }}</div>
+               <!-- メモの表示 -->
+               <div v-if="debt.memo" class="text-xs text-gray-500 mt-1 whitespace-pre-wrap break-words leading-relaxed">{{ debt.memo }}</div>
+               
+               <!-- 総額除外の切り替え / 表示 -->
+               <div v-if="!debt.isRegular" class="mt-1.5 flex items-center">
+                 <label v-if="!viewOnly" class="flex items-center gap-1.5 cursor-pointer">
+                   <input type="checkbox" v-model="debt.excludeFromTotal" @change="saveData" class="w-3 h-3 text-pink-500 rounded border-pink-300 focus:ring-pink-400">
+                   <span class="text-[10px] text-gray-500 font-bold">総額から除外</span>
+                 </label>
+                 <span v-else-if="viewOnly && debt.excludeFromTotal" class="text-[10px] text-pink-500 bg-pink-50 px-2 py-0.5 rounded-full font-bold">
+                   ※総額から除外済み
+                 </span>
+               </div>
+             </div>
+             <div class="text-right">
+               <template v-if="!debt.isRegular">
+                 <div class="text-[10px] text-gray-400">立て替え: ¥{{ debt.amount.toLocaleString() }}</div>
+                 <div class="text-lg font-bold font-mono mt-0.5" :class="getRemain(debt) === 0 ? 'text-emerald-500' : 'text-pink-500'">
+                    残: ¥{{ getRemain(debt).toLocaleString() }}
+                 </div>
+               </template>
+               <template v-else>
+                 <div class="text-[10px] text-purple-400">これまでの支払い</div>
+                 <div class="text-lg font-bold font-mono mt-0.5 text-purple-500">
+                    計: ¥{{ getPaidTotal(debt).toLocaleString() }}
+                 </div>
+               </template>
+             </div>
+           </div>
+           
+           <!-- 返済履歴 -->
+           <div v-if="debt.repayments.length > 0" class="mt-3 bg-pink-50/50 rounded-xl p-3 text-sm border border-pink-100/50">
+              <button @click="debt.showHistory = !debt.showHistory" class="w-full text-left text-[10px] text-pink-400 font-bold flex justify-between items-center transition-opacity active:opacity-50">
+                <div class="flex items-center gap-1">
+                  <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"></path></svg>
+                  お返し履歴 ({{ debt.repayments.length }}件)
+                </div>
+                <span class="bg-pink-100/80 px-2 py-0.5 rounded-full">{{ debt.showHistory ? '▲ 隠す' : '▼ 見る' }}</span>
+              </button>
+              
+              <!-- 履歴リスト本体（開いている時だけ表示） -->
+              <div v-show="debt.showHistory" class="mt-2 space-y-1">
+                <div v-for="rep in debt.repayments" :key="rep.id" class="flex justify-between text-gray-600 text-xs py-0.5 border-b border-pink-100/30 last:border-0">
+                  <span class="font-mono">{{ formatDate(rep.date) }}</span>
+                  <span class="font-bold text-pink-500">- ¥{{ rep.amount.toLocaleString() }}</span>
+                </div>
+              </div>
+           </div>
+           
+           <!-- アクションボタンと削除ボタン -->
+           <div v-if="!viewOnly" class="mt-3 flex justify-between items-center border-t border-pink-100/30 pt-3">
+              <div class="flex items-center gap-3">
+                <button @click="deleteDebt(debt)" class="text-[10px] text-gray-400 hover:text-red-400 flex items-center gap-1 px-2 py-1 rounded transition active:bg-red-50">
+                  🗑️ 消す
+                </button>
+                <div class="flex bg-gray-100 rounded-full px-1 shadow-inner">
+                  <button @click="moveUp(debt)" class="px-2 py-1 text-gray-500 hover:text-pink-500 active:scale-90 transition">▲</button>
+                  <button @click="moveDown(debt)" class="px-2 py-1 text-gray-500 hover:text-pink-500 active:scale-90 transition">▼</button>
+                </div>
+              </div>
+              
+              <div v-if="debt.isRegular || getRemain(debt) > 0">
+                <button @click="openRepayModal(debt)" class="bg-white text-pink-500 border border-pink-200 px-4 py-1.5 rounded-full text-xs font-bold hover:bg-pink-50 active:bg-pink-100 shadow-sm transition">
+                  お返しを記録 ✍️
+                </button>
+              </div>
+              <div v-else>
+                <span class="text-xs text-emerald-500 font-bold bg-emerald-50 px-3 py-1 rounded-full">完済しました 🎉</span>
+              </div>
+           </div>
+           <div v-else-if="viewOnly && !debt.isRegular && getRemain(debt) === 0" class="mt-3 text-right">
+             <span class="text-xs text-emerald-500 font-bold bg-emerald-50 px-3 py-1 rounded-full">完済しました 🎉</span>
+           </div>
+        </div>
+        
+        <!-- 空の時 -->
+        <div v-if="filteredDebts.length === 0" class="text-center py-12 text-pink-300 font-bold">
+          <div class="text-4xl mb-2">🌸</div>
+          表示するきろくがないよ
+        </div>
+      </div>
+    </div>
+
+
+    <!-- 🌟 グラフタブ 🌟 -->
+    <div v-show="currentTab === 'chart'" class="animate-fade-in space-y-4">
+      <h2 class="text-lg font-bold text-pink-500 mb-2">📈 借金とお返しのグラフ</h2>
+      <div class="glass-card rounded-3xl p-4 shadow-sm">
+        <p class="text-xs text-gray-500 mb-4 text-center">月ごとの「立て替えた額」と「お返し額」だよ</p>
+        <div class="relative h-64 w-full">
+          <canvas id="myChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+
+    <!-- 🌟 新規追加タブ (夫用) 🌟 -->
+    <div v-show="currentTab === 'add' && !viewOnly" class="animate-fade-in space-y-4">
+      <h2 class="text-lg font-bold text-pink-500 mb-2">✨ あたらしく記録する</h2>
+      <div class="glass-card rounded-3xl p-6 shadow-sm space-y-5">
+        
+        <div>
+          <label class="block text-xs font-bold text-pink-400 mb-1.5 ml-1">📅 日付</label>
+          <input type="date" v-model="newDebt.date" class="w-full border-2 border-pink-100 rounded-2xl p-3 text-sm focus:outline-none focus:border-pink-300 focus:ring-2 focus:ring-pink-100 bg-white/80 transition">
+        </div>
+        
+        <div>
+          <label class="block text-xs font-bold text-pink-400 mb-1.5 ml-1">🏷️ 何の代金？</label>
+          <input type="text" v-model="newDebt.title" placeholder="例：ディズニー旅行代、ディナー代" class="w-full border-2 border-pink-100 rounded-2xl p-3 text-sm focus:outline-none focus:border-pink-300 focus:ring-2 focus:ring-pink-100 bg-white/80 transition">
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-pink-400 mb-1.5 ml-1">📝 メモ (任意)</label>
+          <textarea v-model="newDebt.memo" placeholder="詳細などを書いてね" rows="2" class="w-full border-2 border-pink-100 rounded-2xl p-3 text-sm focus:outline-none focus:border-pink-300 focus:ring-2 focus:ring-pink-100 bg-white/80 transition"></textarea>
+        </div>
+        
+        <div class="flex items-center gap-3 bg-pink-50 p-4 rounded-2xl border border-pink-100 cursor-pointer" @click="newDebt.isRegular = !newDebt.isRegular">
+          <input type="checkbox" v-model="newDebt.isRegular" class="w-5 h-5 text-pink-500 rounded border-pink-300 focus:ring-pink-400 pointer-events-none">
+          <div class="text-sm">
+            <div class="font-bold text-gray-700">📱 定期的なもの</div>
+            <div class="text-[10px] text-gray-500 mt-0.5">※携帯代など。終わる期限が決まっていないもの。</div>
+          </div>
+        </div>
+        
+        <div v-if="!newDebt.isRegular">
+          <label class="block text-xs font-bold text-pink-400 mb-1.5 ml-1">💰 立て替えた金額 (円)</label>
+          <input type="number" v-model="newDebt.amount" placeholder="50000" class="w-full border-2 border-pink-100 rounded-2xl p-3 text-sm focus:outline-none focus:border-pink-300 focus:ring-2 focus:ring-pink-100 bg-white/80 transition font-mono">
+        </div>
+
+        <div v-if="!newDebt.isRegular" class="flex items-center gap-3 bg-pink-50/50 p-3 rounded-xl border border-pink-100 cursor-pointer" @click="newDebt.excludeFromTotal = !newDebt.excludeFromTotal">
+          <input type="checkbox" v-model="newDebt.excludeFromTotal" class="w-4 h-4 text-pink-500 rounded border-pink-300 focus:ring-pink-400 pointer-events-none">
+          <div class="text-xs">
+            <div class="font-bold text-gray-700">総額計算から除外する</div>
+            <div class="text-[10px] text-gray-500 mt-0.5">※上の「のこり総額」には含まれなくなります。</div>
+          </div>
+        </div>
+
+        <div v-if="newDebt.isRegular" class="text-xs text-purple-600 bg-purple-50 p-3 rounded-xl border border-purple-100">
+          💡 定期的なものは立て替え金額を設定せず、毎回のお返し（支払い）を記録していくよ。
+        </div>
+        
+        <button @click="addDebt" class="w-full bg-gradient-to-r from-pink-400 to-rose-400 text-white font-bold py-3.5 rounded-2xl shadow-lg shadow-pink-200 mt-4 active:scale-95 transition flex justify-center items-center gap-2">
+          <span>記録を追加する</span>
+          <span class="text-xl">💖</span>
+        </button>
+      </div>
+    </div>
+
+
+    <!-- 🌟 設定タブ (夫用) 🌟 -->
+    <div v-show="currentTab === 'settings' && !viewOnly" class="animate-fade-in space-y-6">
+      <h2 class="text-lg font-bold text-pink-500 mb-2">⚙️ せってい</h2>
+
+      <!-- マニュアル確認ボタン -->
+      <button @click="showManual = true" class="w-full bg-white border border-pink-200 text-pink-500 font-bold py-3.5 rounded-3xl shadow-sm active:bg-pink-50 transition flex justify-center items-center gap-2">
+        <span class="text-lg">📖</span>
+        <span>アプリの使い方を見る</span>
+      </button>
+      
+      <!-- GAS設定と妻への共有 -->
+      <div class="glass-card rounded-3xl p-5 shadow-sm space-y-4">
+        <div>
+          <h3 class="font-bold text-gray-700 text-sm flex items-center gap-1">☁️ クラウド連携 (GAS)</h3>
+          <p class="text-[10px] text-gray-500 mt-1">Google Apps ScriptのURLを入れてね。設定すると妻と自動でデータを共有できます。</p>
+        </div>
+        
+        <input type="text" v-model="gasUrl" @change="saveGasUrl" placeholder="https://script.google.com/macros/s/..." class="w-full border-2 border-pink-100 rounded-xl p-2 text-xs focus:outline-none focus:border-pink-300 bg-white/80">
+        
+        <div class="flex gap-2">
+          <button @click="loadFromGas" class="flex-1 bg-white border border-pink-200 text-pink-500 font-bold py-2 rounded-xl text-xs shadow-sm active:bg-pink-50">
+            ☁️ 雲から読み込む
+          </button>
+          <button @click="saveToGas" class="flex-1 bg-pink-100 text-pink-600 font-bold py-2 rounded-xl text-xs shadow-sm active:bg-pink-200">
+            ☁️ 雲へ保存する
+          </button>
+        </div>
+        
+        <div class="pt-4 border-t border-pink-100 mt-2">
+          <p class="text-[10px] text-gray-500 mb-2">↓このURLをLINE等で妻に送ると、妻は見るだけの画面を開けます。</p>
+          <button @click="generateShareUrl" class="w-full bg-gradient-to-r from-rose-100 to-pink-100 text-pink-600 border border-pink-200 font-bold py-3 rounded-xl text-sm shadow-sm active:scale-95 transition flex justify-center items-center gap-2">
+            💌 妻に送る用URLをコピー
+          </button>
+        </div>
+      </div>
+
+      <!-- バックアップ -->
+      <div class="glass-card rounded-3xl p-5 shadow-sm space-y-4">
+        <div>
+          <h3 class="font-bold text-gray-700 text-sm flex items-center gap-1">📦 文字列でバックアップ</h3>
+          <p class="text-[10px] text-gray-500 mt-1">データを短い文字列にしてメモ帳などに保存・復元できます。</p>
+        </div>
+        
+        <textarea v-model="backupString" rows="3" placeholder="ここに出力されます。復元時はここに文字列を貼り付けてね。" class="w-full border-2 border-pink-100 rounded-xl p-2 text-[10px] focus:outline-none focus:border-pink-300 bg-white/80 font-mono break-all"></textarea>
+        
+        <div class="flex gap-2">
+          <button @click="exportBackup" class="flex-1 bg-gray-100 text-gray-600 font-bold py-2 rounded-xl text-xs active:bg-gray-200">
+            出力する (作る)
+          </button>
+          <button v-if="backupString" @click="copyBackup" class="flex-1 bg-blue-50 text-blue-500 font-bold py-2 rounded-xl text-xs border border-blue-200 active:bg-blue-100">
+            📋 コピー
+          </button>
+          <button @click="importBackup" class="flex-1 bg-pink-50 text-pink-600 font-bold py-2 rounded-xl text-xs border border-pink-200 active:bg-pink-100">
+            入力する (復元)
+          </button>
+        </div>
+      </div>
+      
+      <!-- GASコード案内 -->
+      <div class="bg-gray-50/80 rounded-3xl p-5 text-xs text-gray-600 border border-gray-200 shadow-inner">
+        <p class="font-bold mb-2 flex items-center gap-1 text-gray-700">💡 GASのコード (コピペ用)</p>
+        <p class="text-[10px] mb-2">GASのエディタに貼り付けて、ウェブアプリとして「全員（匿名ユーザーを含む）」でデプロイしてね。</p>
+        <div class="relative">
+          <pre class="bg-gray-800 text-emerald-400 p-3 rounded-xl overflow-x-auto text-[10px] font-mono leading-relaxed"><code>function doGet(e) {
+  var d = PropertiesService.getScriptProperties().getProperty("data");
+  return ContentService.createTextOutput(d || '{"debts":[]}').setMimeType(ContentService.MimeType.JSON);
+}
+function doPost(e) {
+  PropertiesService.getScriptProperties().setProperty("data", e.postData.contents);
+  return ContentService.createTextOutput('{"status":"ok"}').setMimeType(ContentService.MimeType.JSON);
+}</code></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= マニュアル モーダル ================= -->
+  <div v-if="showManual" class="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-pink-900/40 backdrop-blur-sm animate-fade-in pb-safe">
+    <div class="bg-white w-full max-w-md h-[85vh] sm:h-[80vh] sm:rounded-3xl rounded-t-3xl shadow-2xl flex flex-col">
+      <!-- モーダルヘッダー -->
+      <div class="flex justify-between items-center p-4 border-b border-pink-100">
+        <h3 class="text-lg font-bold text-pink-500">📖 使い方マニュアル</h3>
+        <button @click="showManual = false" class="text-gray-400 hover:text-gray-600 bg-gray-100 rounded-full w-8 h-8 flex items-center justify-center font-bold">×</button>
+      </div>
+      <!-- モーダルコンテンツ (スクロール) -->
+      <div class="flex-1 overflow-y-auto p-5 space-y-6 text-sm text-gray-700">
+        
+        <div class="space-y-2">
+          <h4 class="font-bold text-pink-500 border-b border-pink-100 pb-1">1. 最初の設定（クラウド連携）</h4>
+          <p class="text-xs leading-relaxed">
+            データを奥様と共有するために必要です。<br>
+            ① 「⚙️ 設定」タブの下の方にある「💡 GASのコード」を使って、ご自身のGoogleアカウントでGASのウェブアプリを作成します（アクセス権は「全員」）。<br>
+            ② 発行されたURLを、「☁️ クラウド連携 (GAS)」の入力欄に貼り付けます。<br>
+            ③ 「☁️ 雲へ保存する」ボタンを押せば設定完了です。
+          </p>
+        </div>
+
+        <div class="space-y-2">
+          <h4 class="font-bold text-pink-500 border-b border-pink-100 pb-1">2. 奥様への共有</h4>
+          <p class="text-xs leading-relaxed">
+            ① 「⚙️ 設定」タブの「💌 妻に送る用URLをコピー」ボタンを押します。<br>
+            ② コピーされたURLをLINE等で奥様に送ります。<br>
+            ※ 奥様には「このURLを開いて、ブックマークかホーム画面に追加してね」と伝えてください。
+          </p>
+        </div>
+
+        <div class="space-y-2">
+          <h4 class="font-bold text-pink-500 border-b border-pink-100 pb-1">3. 記録のつけ方（追加タブ）</h4>
+          <p class="text-xs leading-relaxed">
+            ① 「✍️ 追加」タブを開きます。<br>
+            ② 日付、内容、金額などを入力します。<br>
+            ※ 「総額計算から除外する」にチェックを入れると、一番上の「のこり総額」には含まれなくなります。<br>
+            ③ 「💖 記録を追加する」を押します。
+          </p>
+        </div>
+
+        <div class="space-y-2">
+          <h4 class="font-bold text-pink-500 border-b border-pink-100 pb-1">4. 定期的な支払いの記録</h4>
+          <p class="text-xs leading-relaxed">
+            携帯代やサブスク代など、毎月発生して終わりがないものの記録方法です。<br>
+            ① 「✍️ 追加」タブで内容を入力し、「📱 定期的なもの」にチェックを入れます。<br>
+            ② ホーム画面に項目が追加されるので、「✍️ お返しを記録」ボタンから毎月の支払額を入力していきます。
+          </p>
+        </div>
+
+        <div class="space-y-2">
+          <h4 class="font-bold text-pink-500 border-b border-pink-100 pb-1">5. お返しをもらった時</h4>
+          <p class="text-xs leading-relaxed">
+            ① 「🏠 ホーム」タブで対象の項目を探し、「✍️ お返しを記録」ボタンを押します。<br>
+            ② 日付と金額を入力して記録します。<br>
+            ※ 残額が0円になると、自動的に「完済しました🎉」に変わります。
+          </p>
+        </div>
+
+        <div class="space-y-2">
+          <h4 class="font-bold text-pink-500 border-b border-pink-100 pb-1">6. リストの整理</h4>
+          <p class="text-xs leading-relaxed">
+            ・各項目の「▲」「▼」ボタンで順番を自由に入れ替えられます。<br>
+            ・間違えた場合は「🗑️ 消す」ボタンで削除できます。<br>
+            ・上の「すべて」「返済中」などのボタンで見たい項目を絞り込めます。
+          </p>
+        </div>
+
+        <div class="space-y-2">
+          <h4 class="font-bold text-pink-500 border-b border-pink-100 pb-1">7. 万が一のバックアップ</h4>
+          <p class="text-xs leading-relaxed">
+            ① 「⚙️ 設定」タブの「出力する (作る)」ボタンを押します。<br>
+            ② 出てきた文字列を「📋 コピー」し、スマホのメモ帳などに保存しておきます。<br>
+            ③ 機種変更後などに、その文字列を貼り付けて「入力する (復元)」を押せば元通りになります。
+          </p>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= モーダル (返済記録用) ================= -->
+  <div v-if="showRepayModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-pink-900/30 backdrop-blur-sm animate-fade-in">
+    <div class="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl">
+      <h3 class="text-lg font-bold text-pink-500 mb-1">お返しを記録する 💖</h3>
+      <p class="text-xs text-gray-500 mb-4">{{ targetDebt?.title }}</p>
+      
+      <div class="space-y-4">
+        <div>
+          <label class="block text-xs font-bold text-pink-400 mb-1">📅 返した日</label>
+          <input type="date" v-model="repayDate" class="w-full border-2 border-pink-100 rounded-xl p-2.5 text-sm focus:outline-none focus:border-pink-300">
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-pink-400 mb-1">💰 返した金額 (円)</label>
+          <input type="number" v-model="repayAmount" class="w-full border-2 border-pink-100 rounded-xl p-2.5 text-sm focus:outline-none focus:border-pink-300 font-mono">
+          <p v-if="!targetDebt?.isRegular" class="text-[10px] text-gray-400 mt-1 text-right">※現在の残額: ¥{{ getRemain(targetDebt).toLocaleString() }}</p>
+        </div>
+      </div>
+      
+      <div class="flex gap-3 mt-6">
+        <button @click="showRepayModal = false" class="flex-1 bg-gray-100 text-gray-600 font-bold py-3 rounded-xl text-sm">やめる</button>
+        <button @click="submitRepay" class="flex-1 bg-pink-500 text-white font-bold py-3 rounded-xl text-sm shadow-md shadow-pink-200">記録する ✨</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= ボトムナビゲーション (夫用のみ) ================= -->
+  <div v-if="!viewOnly" class="fixed bottom-0 w-full max-w-md bg-white/95 backdrop-blur border-t border-pink-100 flex justify-around py-2 px-2 z-20 rounded-t-3xl shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.05)] pb-safe">
+     <button @click="currentTab = 'home'" class="flex flex-col items-center gap-1 w-1/4 py-2 transition rounded-2xl" :class="currentTab === 'home' ? 'text-pink-500 bg-pink-50' : 'text-gray-400'">
+       <span class="text-xl leading-none">🏠</span>
+       <span class="text-[10px] font-bold">ホーム</span>
+     </button>
+     <button @click="currentTab = 'add'" class="flex flex-col items-center gap-1 w-1/4 py-2 transition rounded-2xl" :class="currentTab === 'add' ? 'text-pink-500 bg-pink-50' : 'text-gray-400'">
+       <span class="text-xl leading-none">✍️</span>
+       <span class="text-[10px] font-bold">追加</span>
+     </button>
+     <button @click="currentTab = 'chart'" class="flex flex-col items-center gap-1 w-1/4 py-2 transition rounded-2xl" :class="currentTab === 'chart' ? 'text-pink-500 bg-pink-50' : 'text-gray-400'">
+       <span class="text-xl leading-none">📈</span>
+       <span class="text-[10px] font-bold">グラフ</span>
+     </button>
+     <button @click="currentTab = 'settings'" class="flex flex-col items-center gap-1 w-1/4 py-2 transition rounded-2xl" :class="currentTab === 'settings' ? 'text-pink-500 bg-pink-50' : 'text-gray-400'">
+       <span class="text-xl leading-none">⚙️</span>
+       <span class="text-[10px] font-bold">設定</span>
+     </button>
+  </div>
+
+  <!-- ================= ボトムナビゲーション (妻用) ================= -->
+  <div v-if="viewOnly" class="fixed bottom-0 w-full max-w-md bg-white/95 backdrop-blur border-t border-pink-100 flex justify-around py-2 px-2 z-20 rounded-t-3xl shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.05)] pb-safe">
+     <button @click="currentTab = 'home'" class="flex flex-col items-center gap-1 w-1/2 py-2 transition rounded-2xl" :class="currentTab === 'home' ? 'text-pink-500 bg-pink-50' : 'text-gray-400'">
+       <span class="text-xl leading-none">🏠</span>
+       <span class="text-[10px] font-bold">ホーム</span>
+     </button>
+     <button @click="currentTab = 'chart'" class="flex flex-col items-center gap-1 w-1/2 py-2 transition rounded-2xl" :class="currentTab === 'chart' ? 'text-pink-500 bg-pink-50' : 'text-gray-400'">
+       <span class="text-xl leading-none">📈</span>
+       <span class="text-[10px] font-bold">グラフ</span>
+     </button>
+  </div>
+  
+  <!-- ローディングオーバーレイ -->
+  <div v-if="loading" class="fixed inset-0 z-[60] flex items-center justify-center bg-white/50 backdrop-blur-sm">
+    <div class="text-4xl animate-bounce">💖</div>
+  </div>
+
+</div>
+
+<script>
+  const { createApp, ref, computed, onMounted, watch, nextTick } = Vue;
+
+  createApp({
+    setup() {
+      const currentTab = ref('home');
+      const debts = ref([]);
+      const gasUrl = ref('');
+      const viewOnly = ref(false); // 妻が見る用モード
+      const backupString = ref('');
+      const loading = ref(false);
+      const filterStatus = ref('all'); // all, incomplete, completed
+      let chartInstance = null;
+
+      // 新規追加用のデータ
+      const getToday = () => new Date().toISOString().split('T')[0];
+      const newDebt = ref({
+        date: getToday(),
+        title: '',
+        memo: '',
+        amount: '',
+        isRegular: false,
+        excludeFromTotal: false
+      });
+
+      // モーダル用のデータ
+      const showRepayModal = ref(false);
+      const showManual = ref(false); // マニュアル表示用
+      const targetDebt = ref(null);
+      const repayAmount = ref('');
+      const repayDate = ref(getToday());
+
+      // --- 計算ロジック ---
+      
+      // これまでの支払い合計を計算
+      const getPaidTotal = (debt) => {
+        return debt.repayments.reduce((sum, r) => sum + r.amount, 0);
+      };
+
+      // 個別の残額を計算
+      const getRemain = (debt) => {
+        return debt.amount - getPaidTotal(debt);
+      };
+
+      // 定期じゃないものの残額合計
+      const totalRemain = computed(() => {
+        return debts.value
+          .filter(d => !d.isRegular && !d.excludeFromTotal)
+          .reduce((sum, d) => sum + getRemain(d), 0);
+      });
+
+      // 定期的なものの支払い合計
+      const regularPaidTotal = computed(() => {
+        return debts.value
+          .filter(d => d.isRegular)
+          .reduce((sum, d) => sum + getPaidTotal(d), 0);
+      });
+
+      // フィルター適用後のリスト（手動で並び替えた順番を維持するためソートしない）
+      const filteredDebts = computed(() => {
+        let list = debts.value;
+        if (filterStatus.value === 'incomplete') {
+          // 定期的なものは常に返済中扱い
+          list = list.filter(d => d.isRegular || getRemain(d) > 0);
+        } else if (filterStatus.value === 'completed') {
+          list = list.filter(d => !d.isRegular && getRemain(d) === 0);
+        } else if (filterStatus.value === 'regular') {
+          // 定期的なものだけ表示
+          list = list.filter(d => d.isRegular);
+        }
+        return list;
+      });
+
+      // --- グラフ描画ロジック ---
+      const renderChart = () => {
+        const ctx = document.getElementById('myChart');
+        if (!ctx) return;
+
+        // 月ごとのデータを集計
+        const monthlyData = {};
+        
+        debts.value.forEach(d => {
+          const month = d.date.substring(0, 7); // YYYY-MM
+          if (!monthlyData[month]) monthlyData[month] = { debt: 0, repay: 0 };
+          monthlyData[month].debt += d.amount;
+
+          d.repayments.forEach(r => {
+            const rMonth = r.date.substring(0, 7);
+            if (!monthlyData[rMonth]) monthlyData[rMonth] = { debt: 0, repay: 0 };
+            monthlyData[rMonth].repay += r.amount;
+          });
+        });
+
+        // 月でソート
+        const labels = Object.keys(monthlyData).sort();
+        const debtAmounts = labels.map(l => monthlyData[l].debt);
+        const repayAmounts = labels.map(l => monthlyData[l].repay);
+
+        if (chartInstance) {
+          chartInstance.destroy();
+        }
+
+        chartInstance = new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels: labels,
+            datasets: [
+              {
+                label: '立て替え額',
+                backgroundColor: 'rgba(244, 114, 182, 0.8)', // pink-400
+                data: debtAmounts,
+                borderRadius: 4
+              },
+              {
+                label: 'お返し額',
+                backgroundColor: 'rgba(52, 211, 153, 0.8)', // emerald-400
+                data: repayAmounts,
+                borderRadius: 4
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+              y: { beginAtZero: true }
+            }
+          }
+        });
+      };
+
+      // タブが切り替わった時にグラフを描画
+      watch(currentTab, (newTab) => {
+        if (newTab === 'chart') {
+          nextTick(() => {
+            renderChart();
+          });
+        }
+      });
+      
+      // データが変わったらグラフも更新（グラフタブを開いている場合）
+      watch(debts, () => {
+        if (currentTab.value === 'chart') {
+          nextTick(() => {
+            renderChart();
+          });
+        }
+      }, { deep: true });
+
+      // --- アクション ---
+
+      const addDebt = () => {
+        if (!newDebt.value.title) {
+          alert('何の代金か入力してね！');
+          return;
+        }
+        if (!newDebt.value.isRegular && !newDebt.value.amount) {
+          alert('立て替えた金額を入力してね！');
+          return;
+        }
+        
+        // 新しいものを一番上に追加する
+        debts.value.unshift({
+          id: Date.now().toString(),
+          date: newDebt.value.date,
+          title: newDebt.value.title,
+          memo: newDebt.value.memo,
+          amount: newDebt.value.isRegular ? 0 : parseInt(newDebt.value.amount, 10),
+          isRegular: newDebt.value.isRegular,
+          excludeFromTotal: newDebt.value.excludeFromTotal,
+          repayments: [],
+          showHistory: false
+        });
+        
+        saveData();
+        
+        // フォームリセット
+        newDebt.value.title = '';
+        newDebt.value.memo = '';
+        newDebt.value.amount = '';
+        newDebt.value.isRegular = false;
+        newDebt.value.excludeFromTotal = false;
+        currentTab.value = 'home';
+        
+        showToast('記録を追加したよ！✨');
+      };
+
+      // --- 並び替えアクション ---
+      const moveUp = (debt) => {
+        const currentList = filteredDebts.value;
+        const index = currentList.findIndex(d => d.id === debt.id);
+        if (index > 0) {
+          const targetDebt = currentList[index - 1];
+          const originalIndex1 = debts.value.findIndex(d => d.id === debt.id);
+          const originalIndex2 = debts.value.findIndex(d => d.id === targetDebt.id);
+          
+          const temp = debts.value[originalIndex1];
+          debts.value[originalIndex1] = debts.value[originalIndex2];
+          debts.value[originalIndex2] = temp;
+          saveData();
+        }
+      };
+
+      const moveDown = (debt) => {
+        const currentList = filteredDebts.value;
+        const index = currentList.findIndex(d => d.id === debt.id);
+        if (index !== -1 && index < currentList.length - 1) {
+          const targetDebt = currentList[index + 1];
+          const originalIndex1 = debts.value.findIndex(d => d.id === debt.id);
+          const originalIndex2 = debts.value.findIndex(d => d.id === targetDebt.id);
+          
+          const temp = debts.value[originalIndex1];
+          debts.value[originalIndex1] = debts.value[originalIndex2];
+          debts.value[originalIndex2] = temp;
+          saveData();
+        }
+      };
+
+      const deleteDebt = (debt) => {
+        if (confirm(`「${debt.title}」を本当に削除する？\n（これまでのお返し記録も全部消えちゃうよ！）`)) {
+          debts.value = debts.value.filter(d => d.id !== debt.id);
+          saveData();
+          showToast('削除したよ🗑️');
+        }
+      };
+
+      const openRepayModal = (debt) => {
+        targetDebt.value = debt;
+        repayAmount.value = ''; // デフォルトを空白に変更しました
+        repayDate.value = getToday();
+        showRepayModal.value = true;
+      };
+
+      const submitRepay = () => {
+        if (!targetDebt.value || !repayAmount.value || repayAmount.value <= 0) return;
+        
+        targetDebt.value.repayments.push({
+          id: Date.now().toString(),
+          date: repayDate.value,
+          amount: parseInt(repayAmount.value, 10)
+        });
+        
+        saveData();
+        showRepayModal.value = false;
+        targetDebt.value = null;
+        repayAmount.value = '';
+        showToast('お返しを記録したよ！💖');
+      };
+
+      // --- データ保存・読み込み (ローカル & GAS) ---
+
+      const saveData = () => {
+        localStorage.setItem('debtData', JSON.stringify(debts.value));
+        if (gasUrl.value) {
+          saveToGas(true); // バックグラウンドでGASへ保存
+        }
+      };
+
+      const saveGasUrl = () => {
+        localStorage.setItem('gasUrl', gasUrl.value);
+      };
+
+      const saveToGas = async (isBackground = false) => {
+        if (!gasUrl.value) return;
+        if (!isBackground) loading.value = true;
+        
+        try {
+          // CORS制約を回避するため text/plain で POST 送信
+          await fetch(gasUrl.value, {
+            method: 'POST',
+            mode: 'no-cors', 
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify({ debts: debts.value })
+          });
+          if (!isBackground) showToast('雲(GAS)に保存したよ☁️✨');
+        } catch(e) {
+          console.error(e);
+          if (!isBackground) alert('保存に失敗しちゃった💦 電波を確認してね。');
+        } finally {
+          loading.value = false;
+        }
+      };
+
+      const loadFromGas = async () => {
+        if (!gasUrl.value) {
+          alert('GASのURLを入力してね！');
+          return;
+        }
+        loading.value = true;
+        try {
+          const res = await fetch(gasUrl.value);
+          const data = await res.json();
+          if (data && data.debts) {
+            debts.value = data.debts;
+            localStorage.setItem('debtData', JSON.stringify(debts.value));
+            showToast('雲(GAS)から読み込んだよ☁️💖');
+          }
+        } catch(e) {
+          console.error(e);
+          alert('読み込み失敗…💦 URLが正しいか確認してね。');
+        } finally {
+          loading.value = false;
+        }
+      };
+
+      // --- バックアップ (短い文字列) ---
+
+      // データを極力短くするための変換 (さらに短縮：配列化)
+      const minifyData = (data) => {
+        return data.map(d => [
+          d.id, d.date, d.title, d.memo || '', d.amount,
+          d.isRegular ? 1 : 0, d.excludeFromTotal ? 1 : 0,
+          d.repayments.map(rep => [rep.id, rep.date, rep.amount])
+        ]);
+      };
+
+      // 短くしたデータを元に戻す
+      const expandData = (minData) => {
+        if (minData.length === 0) return [];
+        
+        // 旧形式 (プロパティが i, d, t などのオブジェクトになっている場合) のサポート
+        if (!Array.isArray(minData[0])) {
+          return minData.map(d => ({
+            id: d.i, date: d.d, title: d.t, memo: d.m, amount: d.a,
+            isRegular: d.ir === 1, excludeFromTotal: d.ex === 1,
+            repayments: d.r ? d.r.map(rep => ({ id: rep.i, date: rep.d, amount: rep.a })) : [],
+            showHistory: false
+          }));
+        }
+
+        // 新形式 (完全に配列化された極小データ)
+        return minData.map(d => ({
+          id: d[0], date: d[1], title: d[2], memo: d[3], amount: d[4],
+          isRegular: d[5] === 1, excludeFromTotal: d[6] === 1,
+          repayments: d[7] ? d[7].map(rep => ({ id: rep[0], date: rep[1], amount: rep[2] })) : [],
+          showHistory: false
+        }));
+      };
+
+      const exportBackup = () => {
+        // 不要なプロパティを消し、キー名を1文字にしてデータ量を削減
+        const minified = minifyData(debts.value);
+        const jsonStr = JSON.stringify(minified);
+        // Base64にすることでさらに文字数を圧縮
+        backupString.value = LZString.compressToBase64(jsonStr);
+        showToast('文字列を作成したよ！コピーボタンでコピーしてね📝');
+      };
+
+      const copyBackup = () => {
+        if (!backupString.value) return;
+        // 古いブラウザやiOS Safariでも動くコピー処理
+        const textArea = document.createElement("textarea");
+        textArea.value = backupString.value;
+        document.body.appendChild(textArea);
+        textArea.select();
+        try {
+          document.execCommand('copy');
+          alert('コピーしたよ！メモ帳などに貼り付けて保存してね📋');
+        } catch (err) {
+          alert('コピーに失敗しました。手動でコピーしてね。');
+        }
+        document.body.removeChild(textArea);
+      };
+
+      const importBackup = () => {
+        if (!backupString.value) return;
+        try {
+          // まず新しい形式(Base64)でデコードを試す
+          let jsonStr = LZString.decompressFromBase64(backupString.value);
+          // 失敗した場合は古い形式(URIエンコード)を試す
+          if (!jsonStr) {
+            jsonStr = LZString.decompressFromEncodedURIComponent(backupString.value);
+          }
+          
+          const data = JSON.parse(jsonStr);
+          if (Array.isArray(data)) {
+            // 新形式（短縮版）
+            debts.value = expandData(data);
+          } else if (data && data.debts) {
+            // 旧形式
+            debts.value = data.debts;
+          } else {
+            throw new Error("Invalid Format");
+          }
+          
+          saveData();
+          alert('データの復元が完了したよ！🌟\nホーム画面で確認してね。');
+          backupString.value = '';
+        } catch(e) {
+          alert('文字列が間違っているみたい…💦 コピーし忘れている文字がないか確認してね。');
+        }
+      };
+
+      // --- 妻への共有機能 ---
+
+      const generateShareUrl = () => {
+        if (!gasUrl.value) {
+          alert('先にGASのURLを入力して「URLを保存」してね！');
+          return;
+        }
+        const baseUrl = window.location.origin + window.location.pathname;
+        const shareUrl = `${baseUrl}?viewOnly=1&gasUrl=${encodeURIComponent(gasUrl.value)}`;
+        
+        // クリップボードにコピー
+        if(navigator.clipboard && window.isSecureContext) {
+          navigator.clipboard.writeText(shareUrl).then(() => {
+            alert('URLをコピーしたよ！LINEなどで奥様に送ってね💌\n奥様が開くと、自動で最新の数字が見れるようになります。');
+          }).catch(() => {
+            prompt('下のURLをコピーして送ってね💌', shareUrl);
+          });
+        } else {
+          // http環境などのフォールバック
+          prompt('下のURLをコピーして送ってね💌', shareUrl);
+        }
+      };
+
+      // --- ユーティリティ ---
+
+      const formatDate = (dateStr) => {
+        const d = new Date(dateStr);
+        return `${d.getFullYear()}/${(d.getMonth()+1).toString().padStart(2,'0')}/${d.getDate().toString().padStart(2,'0')}`;
+      };
+
+      const showToast = (msg) => {
+        // 簡単な通知（今回はalertを使用）
+        setTimeout(() => alert(msg), 10);
+      };
+
+      // --- 初期化 ---
+      onMounted(() => {
+        // URLパラメータのチェック (妻がアクセスした時の処理)
+        const params = new URLSearchParams(window.location.search);
+        const isView = params.get('viewOnly');
+        const urlGas = params.get('gasUrl');
+
+        if (urlGas) {
+          gasUrl.value = decodeURIComponent(urlGas);
+          localStorage.setItem('gasUrl', gasUrl.value);
+        } else {
+          gasUrl.value = localStorage.getItem('gasUrl') || '';
+        }
+
+        if (isView === '1') {
+          viewOnly.value = true;
+          currentTab.value = 'home';
+        }
+
+        // ローカルデータの読み込み
+        const localData = localStorage.getItem('debtData');
+        if (localData) {
+          try {
+            debts.value = JSON.parse(localData);
+          } catch(e) {}
+        }
+        
+        // これまでのデータ（古い順）を、初回だけ新しい順に並び替えて保存し直す
+        if (!localStorage.getItem('sorted_v1') && debts.value.length > 0) {
+          debts.value.sort((a, b) => new Date(b.date) - new Date(a.date));
+          localStorage.setItem('sorted_v1', '1');
+          saveData();
+        }
+
+        // 妻用モード、またはGAS URL設定済みなら自動で最新を読み込む
+        if (gasUrl.value) {
+          loadFromGas();
+        }
+      });
+
+      return {
+        currentTab, debts, gasUrl, viewOnly, backupString, loading, filterStatus,
+        newDebt, showRepayModal, showManual, targetDebt, repayAmount, repayDate,
+        totalRemain, regularPaidTotal, filteredDebts, getRemain, getPaidTotal,
+        addDebt, deleteDebt, moveUp, moveDown, openRepayModal, submitRepay,
+        saveGasUrl, saveToGas, loadFromGas,
+        exportBackup, copyBackup, importBackup, generateShareUrl,
+        formatDate
+      };
+    }
+  }).mount('#app');
+</script>
+
+<style>
+  /* フェードインアニメーション */
+  .animate-fade-in {
+    animation: fadeIn 0.4s ease-out;
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  /* iPhoneX以降のセーフエリア対応 */
+  .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+</style>
+</body>
+</html>
