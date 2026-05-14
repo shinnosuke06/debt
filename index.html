@@ -1,15 +1,13 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <link rel="apple-touch-icon" href="debt.png">
-<link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#ffd700">
-<meta name="apple-mobile-web-app-title" content="返済管理">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
-
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <!-- ホーム画面に追加した時にアプリのように全画面で開く設定 -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="theme-color" content="#fdf2f8">
+  
   <title>🎀 ふたりのきろく 🎀</title>
   <!-- Tailwind CSS (スタイリング用) -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -42,10 +40,8 @@
     input[type="text"], input[type="number"], input[type="date"], textarea {
       font-size: 16px !important;
       box-sizing: border-box !important;
-      width: 85% !important;
+      width: 100% !important;
       max-width: 100% !important;
-      display: block !important;
-      margin: 0 auto !important;
     }
   </style>
 </head>
@@ -300,24 +296,29 @@
         </div>
       </div>
 
-      <!-- バックアップ -->
+      <!-- バックアップ (ファイル版) -->
       <div class="glass-card rounded-3xl p-5 shadow-sm space-y-4">
         <div>
-          <h3 class="font-bold text-gray-700 text-sm flex items-center gap-1">📦 文字列でバックアップ</h3>
-          <p class="text-[10px] text-gray-500 mt-1">データを短い文字列にしてメモ帳などに保存・復元できます。</p>
+          <h3 class="font-bold text-gray-700 text-sm flex items-center gap-1">📦 ファイルでバックアップ</h3>
+          <p class="text-[10px] text-gray-500 mt-1">スマホの中にファイルとして保存・復元できます。</p>
         </div>
         
-        <textarea v-model="backupString" rows="3" placeholder="ここに出力されます。復元時はここに文字列を貼り付けてね。" class="w-full border-2 border-pink-100 rounded-xl p-2 text-[10px] focus:outline-none focus:border-pink-300 bg-white/80 font-mono break-all"></textarea>
-        
-        <div class="flex gap-2">
-          <button @click="exportBackup" class="flex-1 bg-gray-100 text-gray-600 font-bold py-2 rounded-xl text-xs active:bg-gray-200">
-            出力する (作る)
+        <div class="flex gap-3">
+          <button @click="downloadBackupFile" class="flex-1 bg-gray-100 text-gray-600 font-bold py-3 rounded-xl text-xs active:bg-gray-200 transition shadow-sm">
+            📄 ファイルに保存
           </button>
-          <button v-if="backupString" @click="copyBackup" class="flex-1 bg-blue-50 text-blue-500 font-bold py-2 rounded-xl text-xs border border-blue-200 active:bg-blue-100">
-            📋 コピー
-          </button>
-          <button @click="importBackup" class="flex-1 bg-pink-50 text-pink-600 font-bold py-2 rounded-xl text-xs border border-pink-200 active:bg-pink-100">
-            入力する (復元)
+          <label class="flex-1 bg-pink-50 text-pink-600 font-bold py-3 rounded-xl text-xs border border-pink-200 active:bg-pink-100 transition shadow-sm flex justify-center items-center cursor-pointer">
+            📁 ファイルから復元
+            <input type="file" accept=".json,.txt" @change="uploadBackupFile" class="hidden">
+          </label>
+        </div>
+
+        <div class="pt-4 border-t border-pink-100 mt-2">
+          <p class="font-bold text-gray-700 text-[10px] mb-1">▼ 前回までの「文字列」がある場合はこちら</p>
+          <textarea v-model="backupString" rows="2" placeholder="過去の文字列があればここに貼り付けてね" class="w-full border-2 border-pink-100 rounded-xl p-2 text-[10px] focus:outline-none focus:border-pink-300 bg-white/80 font-mono break-all"></textarea>
+          
+          <button v-if="backupString" @click="importBackup" class="w-full mt-2 bg-white text-pink-500 font-bold py-2 rounded-xl text-xs border border-pink-200 shadow-sm active:bg-pink-50 transition">
+            文字列から復元する
           </button>
         </div>
       </div>
@@ -366,7 +367,7 @@ function doPost(e) {
           <p class="text-xs leading-relaxed">
             ① 「⚙️ 設定」タブの「💌 妻に送る用URLをコピー」ボタンを押します。<br>
             ② コピーされたURLをLINE等で奥様に送ります。<br>
-            ※ 奥様には「このURLを開いて、ブックマークかホーム画面に追加してね」と伝えてください。
+            ※ 奥様には「LINEで開いた後、必ず右下のメニューから『Safariで開く』を選び、その後にホーム画面に追加してね」と伝えてください。
           </p>
         </div>
 
@@ -410,9 +411,10 @@ function doPost(e) {
         <div class="space-y-2">
           <h4 class="font-bold text-pink-500 border-b border-pink-100 pb-1">7. 万が一のバックアップ</h4>
           <p class="text-xs leading-relaxed">
-            ① 「⚙️ 設定」タブの「出力する (作る)」ボタンを押します。<br>
-            ② 出てきた文字列を「📋 コピー」し、スマホのメモ帳などに保存しておきます。<br>
-            ③ 機種変更後などに、その文字列を貼り付けて「入力する (復元)」を押せば元通りになります。
+            ① 「⚙️ 設定」タブの「📄 ファイルに保存」ボタンを押します。<br>
+            ② スマホ本体に「記録（借金）.json」というファイルが保存されます。<br>
+            ③ 機種変更後などに「📁 ファイルから復元」でそのファイルを選べば元通りになります。<br>
+            ※ 前回までの「文字列」での復元も設定タブの下部から行えます。
           </p>
         </div>
 
@@ -789,18 +791,9 @@ function doPost(e) {
         }
       };
 
-      // --- バックアップ (短い文字列) ---
+      // --- ファイルでのバックアップ・復元機能 ---
 
-      // データを極力短くするための変換 (さらに短縮：配列化)
-      const minifyData = (data) => {
-        return data.map(d => [
-          d.id, d.date, d.title, d.memo || '', d.amount,
-          d.isRegular ? 1 : 0, d.excludeFromTotal ? 1 : 0,
-          d.repayments.map(rep => [rep.id, rep.date, rep.amount])
-        ]);
-      };
-
-      // 短くしたデータを元に戻す
+      // 短くしたデータを元に戻す（文字列・ファイル共通の補助機能）
       const expandData = (minData) => {
         if (minData.length === 0) return [];
         
@@ -823,54 +816,106 @@ function doPost(e) {
         }));
       };
 
-      const exportBackup = () => {
-        // 不要なプロパティを消し、キー名を1文字にしてデータ量を削減
-        const minified = minifyData(debts.value);
-        const jsonStr = JSON.stringify(minified);
-        // Base64にすることでさらに文字数を圧縮
-        backupString.value = LZString.compressToBase64(jsonStr);
-        showToast('文字列を作成したよ！コピーボタンでコピーしてね📝');
+      const downloadBackupFile = () => {
+        // 分かりやすいように、そのままのデータ形式(JSON)でファイル出力する
+        const jsonStr = JSON.stringify(debts.value, null, 2);
+        const blob = new Blob([jsonStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = '記録（借金）.json';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showToast('ファイルに保存したよ！📄');
       };
 
-      const copyBackup = () => {
-        if (!backupString.value) return;
-        // 古いブラウザやiOS Safariでも動くコピー処理
-        const textArea = document.createElement("textarea");
-        textArea.value = backupString.value;
-        document.body.appendChild(textArea);
-        textArea.select();
-        try {
-          document.execCommand('copy');
-          alert('コピーしたよ！メモ帳などに貼り付けて保存してね📋');
-        } catch (err) {
-          alert('コピーに失敗しました。手動でコピーしてね。');
-        }
-        document.body.removeChild(textArea);
+      const uploadBackupFile = (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const content = e.target.result.trim();
+          try {
+            // まず普通のJSONとして読み込めるか試す
+            let data = JSON.parse(content);
+            if (Array.isArray(data)) {
+              if (data.length > 0 && Array.isArray(data[0])) {
+                 debts.value = expandData(data);
+              } else {
+                 debts.value = data; // 通常のオブジェクト配列
+              }
+            } else if (data && data.debts) {
+              debts.value = data.debts;
+            } else {
+               throw new Error();
+            }
+            saveData();
+            alert('ファイルからデータを復元したよ！🌟\nホーム画面で確認してね。');
+          } catch (err) {
+            // JSONでなかった場合、前回の「圧縮文字列」だけが入ったテキストファイルかもしれない
+            try {
+              let jsonStr = LZString.decompressFromBase64(content);
+              if (!jsonStr) jsonStr = LZString.decompressFromEncodedURIComponent(content);
+              if (jsonStr) {
+                const data = JSON.parse(jsonStr);
+                if (Array.isArray(data)) {
+                  if (data.length > 0 && Array.isArray(data[0])) {
+                     debts.value = expandData(data);
+                  } else {
+                     debts.value = data;
+                  }
+                } else if (data && data.debts) {
+                  debts.value = data.debts;
+                } else {
+                  throw new Error();
+                }
+                saveData();
+                alert('ファイルからデータを復元したよ！🌟\nホーム画面で確認してね。');
+              } else {
+                throw new Error();
+              }
+            } catch (err2) {
+              alert('ファイルの読み込みに失敗しちゃった💦\n正しいファイルを選んでね。');
+            }
+          }
+          event.target.value = ''; // ファイル選択をリセット
+        };
+        reader.readAsText(file);
       };
 
+      // 過去の「文字列」からの復元機能
       const importBackup = () => {
         if (!backupString.value) return;
         try {
-          // まず新しい形式(Base64)でデコードを試す
+          // まずBase64圧縮から解凍
           let jsonStr = LZString.decompressFromBase64(backupString.value);
-          // 失敗した場合は古い形式(URIエンコード)を試す
+          // 失敗したら古い形式(URIエンコード)から解凍
           if (!jsonStr) {
             jsonStr = LZString.decompressFromEncodedURIComponent(backupString.value);
+          }
+          // それでもダメならそのままのJSON文字列かも
+          if (!jsonStr) {
+            jsonStr = backupString.value;
           }
           
           const data = JSON.parse(jsonStr);
           if (Array.isArray(data)) {
-            // 新形式（短縮版）
-            debts.value = expandData(data);
+            if (data.length > 0 && Array.isArray(data[0])) {
+               debts.value = expandData(data);
+            } else {
+               debts.value = data;
+            }
           } else if (data && data.debts) {
-            // 旧形式
             debts.value = data.debts;
           } else {
             throw new Error("Invalid Format");
           }
           
           saveData();
-          alert('データの復元が完了したよ！🌟\nホーム画面で確認してね。');
+          alert('文字列からのデータ復元が完了したよ！🌟\nホーム画面で確認してね。');
           backupString.value = '';
         } catch(e) {
           alert('文字列が間違っているみたい…💦 コピーし忘れている文字がないか確認してね。');
@@ -881,16 +926,18 @@ function doPost(e) {
 
       const generateShareUrl = () => {
         if (!gasUrl.value) {
-          alert('先にGASのURLを入力して「URLを保存」してね！');
+          alert('先にGASのURLを入力して「雲へ保存する」してね！');
           return;
         }
         const baseUrl = window.location.origin + window.location.pathname;
-        const shareUrl = `${baseUrl}?viewOnly=1&gasUrl=${encodeURIComponent(gasUrl.value)}`;
+        
+        // iOSの「ホーム画面に追加」でパラメータが消えないように、?ではなくハッシュ(#)を使用する
+        const shareUrl = `${baseUrl}#viewOnly=1&gasUrl=${encodeURIComponent(gasUrl.value)}`;
         
         // クリップボードにコピー
         if(navigator.clipboard && window.isSecureContext) {
           navigator.clipboard.writeText(shareUrl).then(() => {
-            alert('URLをコピーしたよ！LINEなどで奥様に送ってね💌\n奥様が開くと、自動で最新の数字が見れるようになります。');
+            alert('URLをコピーしたよ！LINEなどで奥様に送ってね💌\n\n【重要】\n奥様には「送ったURLをLINEで開いたあと、右下のメニューから必ず『Safariで開く』を選んでから、ホーム画面に追加してね」と伝えてください。');
           }).catch(() => {
             prompt('下のURLをコピーして送ってね💌', shareUrl);
           });
@@ -914,10 +961,18 @@ function doPost(e) {
 
       // --- 初期化 ---
       onMounted(() => {
-        // URLパラメータのチェック (妻がアクセスした時の処理)
+        // 1. まず通常のクエリパラメータ（?以降）をチェック
         const params = new URLSearchParams(window.location.search);
-        const isView = params.get('viewOnly');
-        const urlGas = params.get('gasUrl');
+        let isView = params.get('viewOnly');
+        let urlGas = params.get('gasUrl');
+
+        // 2. 次にハッシュパラメータ（#以降）をチェック (ホーム画面追加対策)
+        if (window.location.hash) {
+          const hashStr = window.location.hash.substring(1); // #を取り除く
+          const hashParams = new URLSearchParams(hashStr);
+          if (hashParams.has('viewOnly')) isView = hashParams.get('viewOnly');
+          if (hashParams.has('gasUrl')) urlGas = hashParams.get('gasUrl');
+        }
 
         if (urlGas) {
           gasUrl.value = decodeURIComponent(urlGas);
@@ -958,7 +1013,7 @@ function doPost(e) {
         totalRemain, regularPaidTotal, filteredDebts, getRemain, getPaidTotal,
         addDebt, deleteDebt, moveUp, moveDown, openRepayModal, submitRepay,
         saveGasUrl, saveToGas, loadFromGas,
-        exportBackup, copyBackup, importBackup, generateShareUrl,
+        downloadBackupFile, uploadBackupFile, importBackup, generateShareUrl,
         formatDate
       };
     }
