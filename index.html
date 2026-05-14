@@ -170,6 +170,9 @@
                 <button @click="deleteDebt(debt)" class="text-[10px] text-gray-400 hover:text-red-400 flex items-center gap-1 px-2 py-1 rounded transition active:bg-red-50">
                   🗑️ 消す
                 </button>
+                <button @click="openEditModal(debt)" class="text-[10px] text-gray-400 hover:text-blue-400 flex items-center gap-1 px-2 py-1 rounded transition active:bg-blue-50">
+                  ✎ 編集
+                </button>
                 <div class="flex bg-gray-100 rounded-full px-1 shadow-inner">
                   <button @click="moveUp(debt)" class="px-2 py-1 text-gray-500 hover:text-pink-500 active:scale-90 transition">▲</button>
                   <button @click="moveDown(debt)" class="px-2 py-1 text-gray-500 hover:text-pink-500 active:scale-90 transition">▼</button>
@@ -461,6 +464,35 @@ function doPost(e) {
     </div>
   </div>
 
+  <!-- ================= モーダル (内容編集用) ================= -->
+  <div v-if="showEditModal" class="fixed inset-0 z-[55] flex items-center justify-center p-4 bg-pink-900/30 backdrop-blur-sm animate-fade-in">
+    <div class="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl">
+      <h3 class="text-lg font-bold text-blue-500 mb-4">✎ きろくを修正する</h3>
+      
+      <div class="space-y-4">
+        <div>
+          <label class="block text-xs font-bold text-blue-400 mb-1">🏷️ 何の代金？</label>
+          <input type="text" v-model="editData.title" class="w-full border-2 border-blue-100 rounded-xl p-2.5 text-sm focus:outline-none focus:border-blue-300">
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-blue-400 mb-1">📝 メモ</label>
+          <textarea v-model="editData.memo" rows="2" class="w-full border-2 border-blue-100 rounded-xl p-2.5 text-sm focus:outline-none focus:border-blue-300"></textarea>
+        </div>
+        
+        <div v-if="!editData.isRegular">
+          <label class="block text-xs font-bold text-blue-400 mb-1">💰 立て替えた金額 (円)</label>
+          <input type="number" v-model="editData.amount" class="w-full border-2 border-blue-100 rounded-xl p-2.5 text-sm focus:outline-none focus:border-blue-300 font-mono">
+        </div>
+      </div>
+      
+      <div class="flex gap-3 mt-6">
+        <button @click="showEditModal = false" class="flex-1 bg-gray-100 text-gray-600 font-bold py-3 rounded-xl text-sm">やめる</button>
+        <button @click="submitEdit" class="flex-1 bg-blue-500 text-white font-bold py-3 rounded-xl text-sm shadow-md shadow-blue-200">保存する ✨</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ================= ボトムナビゲーション (夫用のみ) ================= -->
   <div v-if="!viewOnly" class="fixed bottom-0 w-full max-w-md bg-white/95 backdrop-blur border-t border-pink-100 flex justify-around py-2 px-2 z-20 rounded-t-3xl shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.05)] pb-safe">
      <button @click="currentTab = 'home'" class="flex flex-col items-center gap-1 w-1/4 py-2 transition rounded-2xl" :class="currentTab === 'home' ? 'text-pink-500 bg-pink-50' : 'text-gray-400'">
@@ -534,6 +566,10 @@ function doPost(e) {
       const targetDebt = ref(null);
       const repayAmount = ref('');
       const repayDate = ref(getToday());
+
+      // 編集モーダル用のデータ
+      const showEditModal = ref(false);
+      const editData = ref({ title: '', memo: '', amount: '', isRegular: false });
 
       // --- 計算ロジック ---
       
@@ -750,6 +786,42 @@ function doPost(e) {
         targetDebt.value = null;
         repayAmount.value = '';
         showToast('お返しを記録したよ！💖');
+      };
+
+      // --- 編集アクション ---
+      const openEditModal = (debt) => {
+        targetDebt.value = debt;
+        // 現在のデータをコピーして編集フォームにセット
+        editData.value = {
+          title: debt.title,
+          memo: debt.memo || '',
+          amount: debt.isRegular ? '' : debt.amount,
+          isRegular: debt.isRegular
+        };
+        showEditModal.value = true;
+      };
+
+      const submitEdit = () => {
+        if (!targetDebt.value || !editData.value.title) {
+          alert('何の代金か入力してね！');
+          return;
+        }
+        if (!editData.value.isRegular && (!editData.value.amount || editData.value.amount <= 0)) {
+          alert('正しい金額を入力してね！');
+          return;
+        }
+
+        // データの更新
+        targetDebt.value.title = editData.value.title;
+        targetDebt.value.memo = editData.value.memo;
+        if (!targetDebt.value.isRegular) {
+          targetDebt.value.amount = parseInt(editData.value.amount, 10);
+        }
+
+        saveData();
+        showEditModal.value = false;
+        targetDebt.value = null;
+        showToast('内容を修正したよ！✎');
       };
 
       // --- データ保存・読み込み (ローカル & GAS) ---
@@ -1059,8 +1131,9 @@ function doPost(e) {
         currentTab, debts, gasUrl, viewOnly, backupString, loading, filterStatus,
         wifeSetupUrl, setupWifeMode, // 妻用設定の関数を追加
         newDebt, showRepayModal, showManual, targetDebt, repayAmount, repayDate,
+        showEditModal, editData, // 編集モーダル用の変数を追加
         totalRemain, regularPaidTotal, filteredDebts, getRemain, getPaidTotal,
-        addDebt, deleteDebt, moveUp, moveDown, openRepayModal, submitRepay,
+        addDebt, deleteDebt, moveUp, moveDown, openRepayModal, submitRepay, openEditModal, submitEdit, // 編集アクションを追加
         saveGasUrl, saveToGas, loadFromGas,
         downloadBackupFile, uploadBackupFile, importBackup, generateShareUrl,
         formatDate
