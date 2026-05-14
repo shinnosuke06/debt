@@ -1,16 +1,13 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <link rel="apple-touch-icon" href="debt.png">
-<link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#ffd700">
-<meta name="apple-mobile-web-app-title" content="返済管理">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
-
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <!-- ホーム画面に追加した時にアプリのように全画面で開く設定 -->
+  
+  <!-- ホーム画面追加用設定 -->
+  <link rel="apple-touch-icon" href="debt.png">
+  <link rel="manifest" href="manifest.json">
+  <meta name="apple-mobile-web-app-title" content="返済管理">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="theme-color" content="#fdf2f8">
@@ -193,10 +190,20 @@
            </div>
         </div>
         
-        <!-- 空の時 -->
+        <!-- 空の時（初回起動など） -->
         <div v-if="filteredDebts.length === 0" class="text-center py-12 text-pink-300 font-bold">
           <div class="text-4xl mb-2">🌸</div>
           表示するきろくがないよ
+
+          <!-- 妻用モード救済UI -->
+          <div v-if="!gasUrl" class="mt-8 bg-pink-50 p-5 rounded-3xl border border-pink-200 shadow-sm mx-4 text-left animate-fade-in">
+             <p class="text-sm text-pink-600 mb-2 font-bold flex items-center gap-1">👩 奥様へのお願い</p>
+             <p class="text-[10px] text-gray-500 mb-3 leading-relaxed">ホーム画面から開いてここが表示された場合、URLの設定が消えてしまっています💦<br>LINEで送られた「妻に送る用URL」をコピーして、下に貼り付けて「設定」を押してね。</p>
+             <input type="text" v-model="wifeSetupUrl" placeholder="https://..." class="w-full border-2 border-pink-200 rounded-xl p-3 text-xs mb-3 focus:outline-none focus:border-pink-400 bg-white">
+             <button @click="setupWifeMode" class="w-full bg-gradient-to-r from-pink-400 to-rose-400 text-white font-bold py-3 rounded-xl text-sm shadow-md shadow-pink-200 active:scale-95 transition">
+               妻用モードを設定する ✨
+             </button>
+          </div>
         </div>
       </div>
     </div>
@@ -374,7 +381,7 @@ function doPost(e) {
           <p class="text-xs leading-relaxed">
             ① 「⚙️ 設定」タブの「💌 妻に送る用URLをコピー」ボタンを押します。<br>
             ② コピーされたURLをLINE等で奥様に送ります。<br>
-            ※ 奥様には「LINEで開いた後、必ず右下のメニューから『Safariで開く』を選び、その後にホーム画面に追加してね」と伝えてください。
+            ※ 奥様には「ホーム画面に追加して開いてね。もし画面が真っ白で何も表示されなかったら、画面の指示に従って送ったURLを貼り付けてね」と伝えてください。
           </p>
         </div>
 
@@ -506,6 +513,9 @@ function doPost(e) {
       const loading = ref(false);
       const filterStatus = ref('all'); // all, incomplete, completed
       let chartInstance = null;
+
+      // 妻用モード設定用のURL受け皿
+      const wifeSetupUrl = ref('');
 
       // 新規追加用のデータ
       const getToday = () => new Date().toISOString().split('T')[0];
@@ -746,7 +756,7 @@ function doPost(e) {
 
       const saveData = () => {
         localStorage.setItem('debtData', JSON.stringify(debts.value));
-        if (gasUrl.value) {
+        if (gasUrl.value && !viewOnly.value) {
           saveToGas(true); // バックグラウンドでGASへ保存
         }
       };
@@ -777,10 +787,7 @@ function doPost(e) {
       };
 
       const loadFromGas = async () => {
-        if (!gasUrl.value) {
-          alert('GASのURLを入力してね！');
-          return;
-        }
+        if (!gasUrl.value) return;
         loading.value = true;
         try {
           const res = await fetch(gasUrl.value);
@@ -792,9 +799,39 @@ function doPost(e) {
           }
         } catch(e) {
           console.error(e);
-          alert('読み込み失敗…💦 URLが正しいか確認してね。');
+          // 妻用モードで初回ロードに失敗した時は静かにしておく
         } finally {
           loading.value = false;
+        }
+      };
+
+      // --- 妻用モード 救済設定機能 ---
+      const setupWifeMode = () => {
+        try {
+          const urlObj = new URL(wifeSetupUrl.value);
+          let isView = urlObj.searchParams.get('viewOnly');
+          let urlGas = urlObj.searchParams.get('gasUrl');
+
+          // もしハッシュ（#以降）に残っていた場合も念のため対応
+          if (!urlGas && urlObj.hash) {
+            const hashParams = new URLSearchParams(urlObj.hash.substring(1));
+            if (hashParams.has('viewOnly')) isView = hashParams.get('viewOnly');
+            if (hashParams.has('gasUrl')) urlGas = hashParams.get('gasUrl');
+          }
+
+          if (isView === '1' && urlGas) {
+            gasUrl.value = decodeURIComponent(urlGas);
+            localStorage.setItem('gasUrl', gasUrl.value);
+            localStorage.setItem('viewOnly', '1'); // ここで端末（ホームアプリ）に「妻モード」であることを記憶させる
+            viewOnly.value = true;
+            loadFromGas();
+            showToast('妻用モードを設定したよ！💖');
+            wifeSetupUrl.value = '';
+          } else {
+            alert('URLが正しくないみたい💦 夫から送られたURLをそのままコピーしてね。');
+          }
+        } catch (e) {
+          alert('LINEで送られたURLを貼り付けてね！');
         }
       };
 
@@ -938,13 +975,13 @@ function doPost(e) {
         }
         const baseUrl = window.location.origin + window.location.pathname;
         
-        // iOSの「ホーム画面に追加」でパラメータが消えないように、?ではなくハッシュ(#)を使用する
-        const shareUrl = `${baseUrl}#viewOnly=1&gasUrl=${encodeURIComponent(gasUrl.value)}`;
+        // パラメータが一番残りやすい「?」の形式に戻しました
+        const shareUrl = `${baseUrl}?viewOnly=1&gasUrl=${encodeURIComponent(gasUrl.value)}`;
         
         // クリップボードにコピー
         if(navigator.clipboard && window.isSecureContext) {
           navigator.clipboard.writeText(shareUrl).then(() => {
-            alert('URLをコピーしたよ！LINEなどで奥様に送ってね💌\n\n【重要】\n奥様には「送ったURLをLINEで開いたあと、右下のメニューから必ず『Safariで開く』を選んでから、ホーム画面に追加してね」と伝えてください。');
+            alert('URLをコピーしたよ！LINEなどで奥様に送ってね💌\n\n【重要】\n奥様には「LINEで開いてSafariからホーム画面に追加してね」と伝えてください。');
           }).catch(() => {
             prompt('下のURLをコピーして送ってね💌', shareUrl);
           });
@@ -968,12 +1005,12 @@ function doPost(e) {
 
       // --- 初期化 ---
       onMounted(() => {
-        // 1. まず通常のクエリパラメータ（?以降）をチェック
+        // 1. 通常のクエリパラメータ（?以降）をチェック
         const params = new URLSearchParams(window.location.search);
         let isView = params.get('viewOnly');
         let urlGas = params.get('gasUrl');
 
-        // 2. 次にハッシュパラメータ（#以降）をチェック (ホーム画面追加対策)
+        // 2. 念のためハッシュパラメータ（#以降）もチェック
         if (window.location.hash) {
           const hashStr = window.location.hash.substring(1); // #を取り除く
           const hashParams = new URLSearchParams(hashStr);
@@ -988,9 +1025,13 @@ function doPost(e) {
           gasUrl.value = localStorage.getItem('gasUrl') || '';
         }
 
-        if (isView === '1') {
+        // LocalStorageのviewOnlyフラグも確認（ホーム画面から起動した場合、URLパラメータが消えていてもここで拾う）
+        if (isView === '1' || localStorage.getItem('viewOnly') === '1') {
           viewOnly.value = true;
           currentTab.value = 'home';
+          if (isView === '1') {
+            localStorage.setItem('viewOnly', '1'); // スマホ内に妻モードであることを覚えさせる
+          }
         }
 
         // ローカルデータの読み込み
@@ -1016,6 +1057,7 @@ function doPost(e) {
 
       return {
         currentTab, debts, gasUrl, viewOnly, backupString, loading, filterStatus,
+        wifeSetupUrl, setupWifeMode, // 妻用設定の関数を追加
         newDebt, showRepayModal, showManual, targetDebt, repayAmount, repayDate,
         totalRemain, regularPaidTotal, filteredDebts, getRemain, getPaidTotal,
         addDebt, deleteDebt, moveUp, moveDown, openRepayModal, submitRepay,
