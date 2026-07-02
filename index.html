@@ -53,6 +53,13 @@
 
 <div id="app" v-cloak class="max-w-md mx-auto min-h-screen relative pb-20">
 
+  <!-- トースト通知 (ふわっと出るメッセージ) -->
+  <div v-if="toastMessage" class="fixed top-16 left-0 right-0 z-[80] flex justify-center pointer-events-none animate-fade-in">
+    <div class="bg-pink-500/90 backdrop-blur text-white text-xs font-bold px-6 py-3 rounded-full shadow-lg shadow-pink-300/50">
+      {{ toastMessage }}
+    </div>
+  </div>
+
   <!-- ================= ヘッダー ================= -->
   <div class="fixed top-0 w-full max-w-md bg-pink-100/90 backdrop-blur shadow-sm z-20 px-4 py-3 flex justify-between items-center rounded-b-3xl">
     <h1 class="text-lg font-bold text-pink-500 tracking-wide">🎀 ふたりのきろく</h1>
@@ -110,9 +117,11 @@
            
            <div class="flex justify-between items-start mb-2">
              <div class="flex-1 pr-2">
-               <div class="flex items-center gap-2 mb-1">
+               <div class="flex items-center gap-2 mb-1 flex-wrap">
                  <span v-if="debt.isRegular" class="bg-purple-100 text-purple-600 text-[10px] px-2 py-0.5 rounded-full font-bold">定期</span>
                  <span class="text-xs text-gray-400 font-mono">{{ formatDate(debt.date) }}</span>
+                 <!-- グラフ除外マーク -->
+                 <span v-if="debt.excludeFromChart" class="bg-gray-100 text-gray-400 text-[10px] px-2 py-0.5 rounded-full font-bold">グラフ除外</span>
                </div>
                <div class="font-bold text-gray-700 text-sm leading-tight">{{ debt.title }}</div>
                <!-- メモの表示 -->
@@ -164,13 +173,13 @@
               </div>
            </div>
            
-           <!-- アクションボタンと削除ボタン -->
+           <!-- アクションボタン、編集ボタン、削除ボタン -->
            <div v-if="!viewOnly" class="mt-3 flex justify-between items-center border-t border-pink-100/30 pt-3">
               <div class="flex items-center gap-3">
                 <button @click="deleteDebt(debt)" class="text-[10px] text-gray-400 hover:text-red-400 flex items-center gap-1 px-2 py-1 rounded transition active:bg-red-50">
                   🗑️ 消す
                 </button>
-                <button @click="openEditModal(debt)" class="text-[10px] text-gray-400 hover:text-blue-400 flex items-center gap-1 px-2 py-1 rounded transition active:bg-blue-50">
+                <button @click="openEditModal(debt)" class="text-[10px] text-blue-400 hover:text-blue-500 flex items-center gap-1 px-2 py-1 rounded transition active:bg-blue-50">
                   ✎ 編集
                 </button>
                 <div class="flex bg-gray-100 rounded-full px-1 shadow-inner">
@@ -215,10 +224,29 @@
     <!-- 🌟 グラフタブ 🌟 -->
     <div v-show="currentTab === 'chart'" class="animate-fade-in space-y-4">
       <h2 class="text-lg font-bold text-pink-500 mb-2">📈 借金とお返しのグラフ</h2>
+      
+      <!-- グラフの期間切り替え -->
+      <div class="flex justify-center mb-2">
+        <div class="flex bg-pink-100/50 rounded-full p-1 border border-pink-200 text-[10px] font-bold shadow-inner">
+          <button @click="chartPeriod = '6'" class="px-4 py-2 rounded-full transition" :class="chartPeriod === '6' ? 'bg-white text-pink-600 shadow-sm' : 'text-pink-400'">半年</button>
+          <button @click="chartPeriod = '12'" class="px-4 py-2 rounded-full transition" :class="chartPeriod === '12' ? 'bg-white text-pink-600 shadow-sm' : 'text-pink-400'">1年</button>
+          <button @click="chartPeriod = 'all'" class="px-4 py-2 rounded-full transition" :class="chartPeriod === 'all' ? 'bg-white text-pink-600 shadow-sm' : 'text-pink-400'">すべて</button>
+        </div>
+      </div>
+
       <div class="glass-card rounded-3xl p-4 shadow-sm">
-        <p class="text-xs text-gray-500 mb-4 text-center">月ごとの「立て替えた額」と「お返し額」だよ</p>
+        <p class="text-[10px] text-gray-500 mb-2 text-center">月ごとの「立て替えた額」と「お返し額」だよ</p>
+        <p class="text-[10px] text-pink-400 font-bold mb-4 text-center">💡 その月の棒のあたりをタップすると非表示にできるよ！</p>
         <div class="relative h-64 w-full">
           <canvas id="myChart"></canvas>
+        </div>
+        
+        <!-- 非表示にしている月のリスト -->
+        <div v-if="excludedChartMonths.length > 0" class="mt-6 flex flex-wrap gap-2 justify-center border-t border-pink-100 pt-3">
+          <span class="text-[10px] text-gray-400 w-full text-center mb-1">非表示中の月（タップで元に戻す）</span>
+          <button v-for="month in excludedChartMonths" :key="month" @click="restoreChartMonth(month)" class="bg-gray-100 text-gray-500 border border-gray-200 px-3 py-1 rounded-full text-xs font-bold hover:bg-pink-50 hover:text-pink-500 transition active:scale-95 shadow-sm">
+            {{ month }} 復元
+          </button>
         </div>
       </div>
     </div>
@@ -262,6 +290,14 @@
           <div class="text-xs">
             <div class="font-bold text-gray-700">総額計算から除外する</div>
             <div class="text-[10px] text-gray-500 mt-0.5">※上の「のこり総額」には含まれなくなります。</div>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-3 bg-gray-50 p-3 rounded-xl border border-gray-200 cursor-pointer" @click="newDebt.excludeFromChart = !newDebt.excludeFromChart">
+          <input type="checkbox" v-model="newDebt.excludeFromChart" class="w-4 h-4 text-gray-500 rounded border-gray-300 pointer-events-none">
+          <div class="text-xs">
+            <div class="font-bold text-gray-700">グラフから除外する</div>
+            <div class="text-[10px] text-gray-500 mt-0.5">※この項目の金額とお返しはグラフに表示されません。</div>
           </div>
         </div>
 
@@ -358,17 +394,43 @@ function doPost(e) {
     </div>
   </div>
 
+
+  <!-- ================= 共通カスタムアラート・確認モーダル ================= -->
+  <div v-if="alertDialog.show" class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in pb-safe">
+    <div class="bg-white rounded-3xl w-full max-w-xs p-6 shadow-2xl text-center">
+      <p class="text-sm font-bold text-gray-700 whitespace-pre-wrap leading-relaxed mb-6">{{ alertDialog.message }}</p>
+      <button @click="alertDialog.ok()" class="w-full bg-pink-500 text-white font-bold py-3 rounded-xl text-sm shadow-md shadow-pink-200 active:bg-pink-600">わかった！</button>
+    </div>
+  </div>
+
+  <div v-if="confirmDialog.show" class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in pb-safe">
+    <div class="bg-white rounded-3xl w-full max-w-xs p-6 shadow-2xl text-center">
+      <p class="text-sm font-bold text-gray-700 whitespace-pre-wrap leading-relaxed mb-6">{{ confirmDialog.message }}</p>
+      <div class="flex gap-3">
+        <button @click="confirmDialog.cancel()" class="flex-1 bg-gray-100 text-gray-600 font-bold py-3 rounded-xl text-sm active:bg-gray-200">やめる</button>
+        <button @click="confirmDialog.ok()" class="flex-1 bg-pink-500 text-white font-bold py-3 rounded-xl text-sm shadow-md shadow-pink-200 active:bg-pink-600">はい</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= URL共有用モーダル ================= -->
+  <div v-if="shareUrlData" class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in pb-safe">
+    <div class="bg-white rounded-3xl w-full max-w-xs p-6 shadow-2xl text-center">
+      <p class="text-sm font-bold text-gray-700 mb-4">下のURLをコピーして送ってね💌</p>
+      <textarea readonly rows="4" class="w-full border-2 border-pink-100 rounded-xl p-2 text-xs focus:outline-none focus:border-pink-300 mb-4 break-all bg-gray-50">{{ shareUrlData }}</textarea>
+      <button @click="shareUrlData = ''" class="w-full bg-pink-500 text-white font-bold py-3 rounded-xl text-sm shadow-md shadow-pink-200 active:bg-pink-600">閉じる</button>
+    </div>
+  </div>
+
+
   <!-- ================= マニュアル モーダル ================= -->
   <div v-if="showManual" class="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-pink-900/40 backdrop-blur-sm animate-fade-in pb-safe">
     <div class="bg-white w-full max-w-md h-[85vh] sm:h-[80vh] sm:rounded-3xl rounded-t-3xl shadow-2xl flex flex-col">
-      <!-- モーダルヘッダー -->
       <div class="flex justify-between items-center p-4 border-b border-pink-100">
         <h3 class="text-lg font-bold text-pink-500">📖 使い方マニュアル</h3>
         <button @click="showManual = false" class="text-gray-400 hover:text-gray-600 bg-gray-100 rounded-full w-8 h-8 flex items-center justify-center font-bold">×</button>
       </div>
-      <!-- モーダルコンテンツ (スクロール) -->
       <div class="flex-1 overflow-y-auto p-5 space-y-6 text-sm text-gray-700">
-        
         <div class="space-y-2">
           <h4 class="font-bold text-pink-500 border-b border-pink-100 pb-1">1. 最初の設定（クラウド連携）</h4>
           <p class="text-xs leading-relaxed">
@@ -378,7 +440,6 @@ function doPost(e) {
             ③ 「☁️ 雲へ保存する」ボタンを押せば設定完了です。
           </p>
         </div>
-
         <div class="space-y-2">
           <h4 class="font-bold text-pink-500 border-b border-pink-100 pb-1">2. 奥様への共有</h4>
           <p class="text-xs leading-relaxed">
@@ -387,17 +448,14 @@ function doPost(e) {
             ※ 奥様には「ホーム画面に追加して開いてね。もし画面が真っ白で何も表示されなかったら、画面の指示に従って送ったURLを貼り付けてね」と伝えてください。
           </p>
         </div>
-
         <div class="space-y-2">
-          <h4 class="font-bold text-pink-500 border-b border-pink-100 pb-1">3. 記録のつけ方（追加タブ）</h4>
+          <h4 class="font-bold text-pink-500 border-b border-pink-100 pb-1">3. 記録のつけ方・編集（追加タブ）</h4>
           <p class="text-xs leading-relaxed">
             ① 「✍️ 追加」タブを開きます。<br>
-            ② 日付、内容、金額などを入力します。<br>
-            ※ 「総額計算から除外する」にチェックを入れると、一番上の「のこり総額」には含まれなくなります。<br>
-            ③ 「💖 記録を追加する」を押します。
+            ② 日付、内容、金額などを入力して「💖 記録を追加する」を押します。<br>
+            ※ ホーム画面の対象の項目にある「✎ 編集」ボタンから、後から内容を修正できます。
           </p>
         </div>
-
         <div class="space-y-2">
           <h4 class="font-bold text-pink-500 border-b border-pink-100 pb-1">4. 定期的な支払いの記録</h4>
           <p class="text-xs leading-relaxed">
@@ -406,7 +464,6 @@ function doPost(e) {
             ② ホーム画面に項目が追加されるので、「✍️ お返しを記録」ボタンから毎月の支払額を入力していきます。
           </p>
         </div>
-
         <div class="space-y-2">
           <h4 class="font-bold text-pink-500 border-b border-pink-100 pb-1">5. お返しをもらった時</h4>
           <p class="text-xs leading-relaxed">
@@ -415,32 +472,61 @@ function doPost(e) {
             ※ 残額が0円になると、自動的に「完済しました🎉」に変わります。
           </p>
         </div>
-
         <div class="space-y-2">
-          <h4 class="font-bold text-pink-500 border-b border-pink-100 pb-1">6. リストの整理</h4>
+          <h4 class="font-bold text-pink-500 border-b border-pink-100 pb-1">6. グラフとリストの整理</h4>
           <p class="text-xs leading-relaxed">
-            ・各項目の「▲」「▼」ボタンで順番を自由に入れ替えられます。<br>
-            ・間違えた場合は「🗑️ 消す」ボタンで削除できます。<br>
-            ・上の「すべて」「返済中」などのボタンで見たい項目を絞り込めます。
+            ・グラフ画面の「半年」「1年」ボタンで、最近のグラフだけを見やすく表示できます。<br>
+            ・邪魔な棒グラフは、直接タップするとその月を非表示にできます。<br>
+            ・ホーム画面では「▲」「▼」ボタンで順番を自由に入れ替えられます。
           </p>
         </div>
+      </div>
+    </div>
+  </div>
 
-        <div class="space-y-2">
-          <h4 class="font-bold text-pink-500 border-b border-pink-100 pb-1">7. 万が一のバックアップ</h4>
-          <p class="text-xs leading-relaxed">
-            ① 「⚙️ 設定」タブの「📄 ファイルに保存」ボタンを押します。<br>
-            ② スマホ本体に「記録（借金）.json」というファイルが保存されます。<br>
-            ③ 機種変更後などに「📁 ファイルから復元」でそのファイルを選べば元通りになります。<br>
-            ※ 前回までの「文字列」での復元も設定タブの下部から行えます。
-          </p>
+  <!-- ================= モーダル (記録の編集用) ================= -->
+  <div v-if="showEditModal" class="fixed inset-0 z-[55] flex items-center justify-center p-4 bg-pink-900/30 backdrop-blur-sm animate-fade-in pb-safe">
+    <div class="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+      <h3 class="text-lg font-bold text-pink-500 mb-4">きろくを編集する ✎</h3>
+      
+      <div class="space-y-4">
+        <div>
+          <label class="block text-xs font-bold text-pink-400 mb-1">📅 日付</label>
+          <input type="date" v-model="editData.date" class="w-full border-2 border-pink-100 rounded-xl p-2.5 text-sm focus:outline-none focus:border-pink-300">
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-pink-400 mb-1">🏷️ 何の代金？</label>
+          <input type="text" v-model="editData.title" class="w-full border-2 border-pink-100 rounded-xl p-2.5 text-sm focus:outline-none focus:border-pink-300">
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-pink-400 mb-1">📝 メモ</label>
+          <textarea v-model="editData.memo" rows="2" class="w-full border-2 border-pink-100 rounded-xl p-2.5 text-sm focus:outline-none focus:border-pink-300"></textarea>
+        </div>
+        <div v-if="!editData.isRegular">
+          <label class="block text-xs font-bold text-pink-400 mb-1">💰 立て替えた金額 (円)</label>
+          <input type="number" v-model="editData.amount" class="w-full border-2 border-pink-100 rounded-xl p-2.5 text-sm focus:outline-none focus:border-pink-300 font-mono">
+        </div>
+        
+        <div v-if="!editData.isRegular" class="flex items-center gap-2 mt-2 cursor-pointer" @click="editData.excludeFromTotal = !editData.excludeFromTotal">
+          <input type="checkbox" v-model="editData.excludeFromTotal" class="w-4 h-4 text-pink-500 rounded border-pink-300 pointer-events-none">
+          <span class="text-xs font-bold text-gray-600">総額計算から除外する</span>
         </div>
 
+        <div class="flex items-center gap-2 mt-2 cursor-pointer bg-gray-50 p-2 rounded-lg border border-gray-100" @click="editData.excludeFromChart = !editData.excludeFromChart">
+          <input type="checkbox" v-model="editData.excludeFromChart" class="w-4 h-4 text-gray-400 rounded border-gray-300 pointer-events-none">
+          <span class="text-xs font-bold text-gray-600">グラフから除外する（表示しない）</span>
+        </div>
+      </div>
+      
+      <div class="flex gap-3 mt-6">
+        <button @click="showEditModal = false" class="flex-1 bg-gray-100 text-gray-600 font-bold py-3 rounded-xl text-sm">やめる</button>
+        <button @click="submitEdit" class="flex-1 bg-blue-500 text-white font-bold py-3 rounded-xl text-sm shadow-md shadow-blue-200">保存する ✨</button>
       </div>
     </div>
   </div>
 
   <!-- ================= モーダル (返済記録用) ================= -->
-  <div v-if="showRepayModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-pink-900/30 backdrop-blur-sm animate-fade-in">
+  <div v-if="showRepayModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-pink-900/30 backdrop-blur-sm animate-fade-in pb-safe">
     <div class="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl">
       <h3 class="text-lg font-bold text-pink-500 mb-1">お返しを記録する 💖</h3>
       <p class="text-xs text-gray-500 mb-4">{{ targetDebt?.title }}</p>
@@ -460,35 +546,6 @@ function doPost(e) {
       <div class="flex gap-3 mt-6">
         <button @click="showRepayModal = false" class="flex-1 bg-gray-100 text-gray-600 font-bold py-3 rounded-xl text-sm">やめる</button>
         <button @click="submitRepay" class="flex-1 bg-pink-500 text-white font-bold py-3 rounded-xl text-sm shadow-md shadow-pink-200">記録する ✨</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ================= モーダル (内容編集用) ================= -->
-  <div v-if="showEditModal" class="fixed inset-0 z-[55] flex items-center justify-center p-4 bg-pink-900/30 backdrop-blur-sm animate-fade-in">
-    <div class="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl">
-      <h3 class="text-lg font-bold text-blue-500 mb-4">✎ きろくを修正する</h3>
-      
-      <div class="space-y-4">
-        <div>
-          <label class="block text-xs font-bold text-blue-400 mb-1">🏷️ 何の代金？</label>
-          <input type="text" v-model="editData.title" class="w-full border-2 border-blue-100 rounded-xl p-2.5 text-sm focus:outline-none focus:border-blue-300">
-        </div>
-
-        <div>
-          <label class="block text-xs font-bold text-blue-400 mb-1">📝 メモ</label>
-          <textarea v-model="editData.memo" rows="2" class="w-full border-2 border-blue-100 rounded-xl p-2.5 text-sm focus:outline-none focus:border-blue-300"></textarea>
-        </div>
-        
-        <div v-if="!editData.isRegular">
-          <label class="block text-xs font-bold text-blue-400 mb-1">💰 立て替えた金額 (円)</label>
-          <input type="number" v-model="editData.amount" class="w-full border-2 border-blue-100 rounded-xl p-2.5 text-sm focus:outline-none focus:border-blue-300 font-mono">
-        </div>
-      </div>
-      
-      <div class="flex gap-3 mt-6">
-        <button @click="showEditModal = false" class="flex-1 bg-gray-100 text-gray-600 font-bold py-3 rounded-xl text-sm">やめる</button>
-        <button @click="submitEdit" class="flex-1 bg-blue-500 text-white font-bold py-3 rounded-xl text-sm shadow-md shadow-blue-200">保存する ✨</button>
       </div>
     </div>
   </div>
@@ -537,76 +594,87 @@ function doPost(e) {
 
   createApp({
     setup() {
+      // カスタムダイアログ用
+      const alertDialog = ref({ show: false, message: '', ok: () => {} });
+      const confirmDialog = ref({ show: false, message: '', ok: () => {}, cancel: () => {} });
+      const toastMessage = ref('');
+      const shareUrlData = ref('');
+
+      const customAlert = (msg) => {
+        alertDialog.value = {
+          show: true,
+          message: msg,
+          ok: () => { alertDialog.value.show = false; }
+        };
+      };
+
+      const customConfirm = (msg, onOk) => {
+        confirmDialog.value = {
+          show: true,
+          message: msg,
+          ok: () => { 
+            confirmDialog.value.show = false; 
+            if(onOk) onOk(); 
+          },
+          cancel: () => { confirmDialog.value.show = false; }
+        };
+      };
+
+      const showToast = (msg) => {
+        toastMessage.value = msg;
+        setTimeout(() => { toastMessage.value = ''; }, 3000); // 3秒で消える
+      };
+
       const currentTab = ref('home');
       const debts = ref([]);
       const gasUrl = ref('');
-      const viewOnly = ref(false); // 妻が見る用モード
+      const viewOnly = ref(false); 
       const backupString = ref('');
       const loading = ref(false);
-      const filterStatus = ref('all'); // all, incomplete, completed
+      const filterStatus = ref('all'); 
+      const chartPeriod = ref('6'); 
+      const excludedChartMonths = ref([]); 
       let chartInstance = null;
 
-      // 妻用モード設定用のURL受け皿
       const wifeSetupUrl = ref('');
 
-      // 新規追加用のデータ
       const getToday = () => new Date().toISOString().split('T')[0];
       const newDebt = ref({
-        date: getToday(),
-        title: '',
-        memo: '',
-        amount: '',
-        isRegular: false,
-        excludeFromTotal: false
+        date: getToday(), title: '', memo: '', amount: '',
+        isRegular: false, excludeFromTotal: false, excludeFromChart: false 
       });
 
-      // モーダル用のデータ
+      const showEditModal = ref(false);
+      const editData = ref({ 
+        id: '', date: '', title: '', memo: '', amount: '', 
+        isRegular: false, excludeFromTotal: false, excludeFromChart: false 
+      });
+
       const showRepayModal = ref(false);
-      const showManual = ref(false); // マニュアル表示用
+      const showManual = ref(false);
       const targetDebt = ref(null);
       const repayAmount = ref('');
       const repayDate = ref(getToday());
 
-      // 編集モーダル用のデータ
-      const showEditModal = ref(false);
-      const editData = ref({ title: '', memo: '', amount: '', isRegular: false });
-
       // --- 計算ロジック ---
-      
-      // これまでの支払い合計を計算
-      const getPaidTotal = (debt) => {
-        return debt.repayments.reduce((sum, r) => sum + r.amount, 0);
-      };
+      const getPaidTotal = (debt) => debt.repayments.reduce((sum, r) => sum + r.amount, 0);
+      const getRemain = (debt) => debt.amount - getPaidTotal(debt);
 
-      // 個別の残額を計算
-      const getRemain = (debt) => {
-        return debt.amount - getPaidTotal(debt);
-      };
-
-      // 定期じゃないものの残額合計
       const totalRemain = computed(() => {
-        return debts.value
-          .filter(d => !d.isRegular && !d.excludeFromTotal)
-          .reduce((sum, d) => sum + getRemain(d), 0);
+        return debts.value.filter(d => !d.isRegular && !d.excludeFromTotal).reduce((sum, d) => sum + getRemain(d), 0);
       });
 
-      // 定期的なものの支払い合計
       const regularPaidTotal = computed(() => {
-        return debts.value
-          .filter(d => d.isRegular)
-          .reduce((sum, d) => sum + getPaidTotal(d), 0);
+        return debts.value.filter(d => d.isRegular).reduce((sum, d) => sum + getPaidTotal(d), 0);
       });
 
-      // フィルター適用後のリスト（手動で並び替えた順番を維持するためソートしない）
       const filteredDebts = computed(() => {
         let list = debts.value;
         if (filterStatus.value === 'incomplete') {
-          // 定期的なものは常に返済中扱い
           list = list.filter(d => d.isRegular || getRemain(d) > 0);
         } else if (filterStatus.value === 'completed') {
           list = list.filter(d => !d.isRegular && getRemain(d) === 0);
         } else if (filterStatus.value === 'regular') {
-          // 定期的なものだけ表示
           list = list.filter(d => d.isRegular);
         }
         return list;
@@ -617,11 +685,10 @@ function doPost(e) {
         const ctx = document.getElementById('myChart');
         if (!ctx) return;
 
-        // 月ごとのデータを集計
         const monthlyData = {};
         
-        debts.value.forEach(d => {
-          const month = d.date.substring(0, 7); // YYYY-MM
+        debts.value.filter(d => !d.excludeFromChart).forEach(d => {
+          const month = d.date.substring(0, 7); 
           if (!monthlyData[month]) monthlyData[month] = { debt: 0, repay: 0 };
           monthlyData[month].debt += d.amount;
 
@@ -632,14 +699,25 @@ function doPost(e) {
           });
         });
 
-        // 月でソート
-        const labels = Object.keys(monthlyData).sort();
-        const debtAmounts = labels.map(l => monthlyData[l].debt);
-        const repayAmounts = labels.map(l => monthlyData[l].repay);
+        let labels = Object.keys(monthlyData).sort();
 
-        if (chartInstance) {
-          chartInstance.destroy();
+        if (chartPeriod.value !== 'all') {
+          const numMonths = parseInt(chartPeriod.value, 10);
+          const recentMonths = [];
+          const today = new Date();
+          for (let i = numMonths - 1; i >= 0; i--) {
+            const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+            recentMonths.push(`${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}`);
+          }
+          labels = recentMonths;
         }
+
+        labels = labels.filter(l => !excludedChartMonths.value.includes(l));
+
+        const debtAmounts = labels.map(l => monthlyData[l] ? monthlyData[l].debt : 0);
+        const repayAmounts = labels.map(l => monthlyData[l] ? monthlyData[l].repay : 0);
+
+        if (chartInstance) chartInstance.destroy();
 
         chartInstance = new Chart(ctx, {
           type: 'bar',
@@ -648,13 +726,13 @@ function doPost(e) {
             datasets: [
               {
                 label: '立て替え額',
-                backgroundColor: 'rgba(244, 114, 182, 0.8)', // pink-400
+                backgroundColor: 'rgba(244, 114, 182, 0.8)',
                 data: debtAmounts,
                 borderRadius: 4
               },
               {
                 label: 'お返し額',
-                backgroundColor: 'rgba(52, 211, 153, 0.8)', // emerald-400
+                backgroundColor: 'rgba(52, 211, 153, 0.8)',
                 data: repayAmounts,
                 borderRadius: 4
               }
@@ -663,78 +741,99 @@ function doPost(e) {
           options: {
             responsive: true,
             maintainAspectRatio: false,
+            // グラフの「タップしやすさ」を劇的にアップさせる魔法の設定
+            interaction: {
+              mode: 'index',
+              intersect: false, 
+            },
             scales: {
               y: { beginAtZero: true }
+            },
+            onClick: (event, elements, chart) => {
+              if (elements && elements.length > 0) {
+                const dataIndex = elements[0].index;
+                const clickedLabel = chart.data.labels[dataIndex];
+                if (clickedLabel && !excludedChartMonths.value.includes(clickedLabel)) {
+                  // 確認画面を表示して非表示にする
+                  customConfirm(`「${clickedLabel}」のグラフを非表示にする？\n（下のボタンからすぐに元に戻せるよ！）`, () => {
+                    excludedChartMonths.value.push(clickedLabel);
+                    localStorage.setItem('excludedChartMonths', JSON.stringify(excludedChartMonths.value));
+                    renderChart(); 
+                  });
+                }
+              }
             }
           }
         });
       };
 
-      // タブが切り替わった時にグラフを描画
-      watch(currentTab, (newTab) => {
-        if (newTab === 'chart') {
-          nextTick(() => {
-            renderChart();
-          });
-        }
+      const restoreChartMonth = (month) => {
+        excludedChartMonths.value = excludedChartMonths.value.filter(m => m !== month);
+        localStorage.setItem('excludedChartMonths', JSON.stringify(excludedChartMonths.value));
+        nextTick(() => { renderChart(); });
+      };
+
+      watch([currentTab, chartPeriod], ([newTab, newPeriod]) => {
+        if (newTab === 'chart') nextTick(() => { renderChart(); });
       });
       
-      // データが変わったらグラフも更新（グラフタブを開いている場合）
       watch(debts, () => {
-        if (currentTab.value === 'chart') {
-          nextTick(() => {
-            renderChart();
-          });
-        }
+        if (currentTab.value === 'chart') nextTick(() => { renderChart(); });
       }, { deep: true });
 
       // --- アクション ---
-
       const addDebt = () => {
-        if (!newDebt.value.title) {
-          alert('何の代金か入力してね！');
-          return;
-        }
-        if (!newDebt.value.isRegular && !newDebt.value.amount) {
-          alert('立て替えた金額を入力してね！');
-          return;
-        }
+        if (!newDebt.value.title) return customAlert('何の代金か入力してね！');
+        if (!newDebt.value.isRegular && !newDebt.value.amount) return customAlert('立て替えた金額を入力してね！');
         
-        // 新しいものを一番上に追加する
         debts.value.unshift({
-          id: Date.now().toString(),
-          date: newDebt.value.date,
-          title: newDebt.value.title,
-          memo: newDebt.value.memo,
-          amount: newDebt.value.isRegular ? 0 : parseInt(newDebt.value.amount, 10),
-          isRegular: newDebt.value.isRegular,
-          excludeFromTotal: newDebt.value.excludeFromTotal,
-          repayments: [],
-          showHistory: false
+          id: Date.now().toString(), date: newDebt.value.date, title: newDebt.value.title,
+          memo: newDebt.value.memo, amount: newDebt.value.isRegular ? 0 : parseInt(newDebt.value.amount, 10),
+          isRegular: newDebt.value.isRegular, excludeFromTotal: newDebt.value.excludeFromTotal,
+          excludeFromChart: newDebt.value.excludeFromChart, repayments: [], showHistory: false
         });
         
         saveData();
-        
-        // フォームリセット
-        newDebt.value.title = '';
-        newDebt.value.memo = '';
-        newDebt.value.amount = '';
-        newDebt.value.isRegular = false;
-        newDebt.value.excludeFromTotal = false;
+        newDebt.value = { date: getToday(), title: '', memo: '', amount: '', isRegular: false, excludeFromTotal: false, excludeFromChart: false };
         currentTab.value = 'home';
-        
         showToast('記録を追加したよ！✨');
       };
 
-      // --- 並び替えアクション ---
+      const openEditModal = (debt) => {
+        editData.value = { ...debt, excludeFromChart: debt.excludeFromChart || false };
+        showEditModal.value = true;
+      };
+
+      const submitEdit = () => {
+        if (!editData.value.title) return customAlert('何の代金か入力してね！');
+        const target = debts.value.find(d => d.id === editData.value.id);
+        if (target) {
+          target.date = editData.value.date; target.title = editData.value.title; target.memo = editData.value.memo;
+          target.excludeFromChart = editData.value.excludeFromChart;
+          if (!target.isRegular) {
+            target.amount = parseInt(editData.value.amount, 10) || 0;
+            target.excludeFromTotal = editData.value.excludeFromTotal;
+          }
+          saveData();
+          showToast('編集を保存したよ！✨');
+        }
+        showEditModal.value = false;
+      };
+
+      const deleteDebt = (debt) => {
+        customConfirm(`「${debt.title}」を本当に削除する？\n（これまでのお返し記録も全部消えちゃうよ！）`, () => {
+          debts.value = debts.value.filter(d => d.id !== debt.id);
+          saveData();
+          showToast('削除したよ🗑️');
+        });
+      };
+
       const moveUp = (debt) => {
         const currentList = filteredDebts.value;
         const index = currentList.findIndex(d => d.id === debt.id);
         if (index > 0) {
-          const targetDebt = currentList[index - 1];
           const originalIndex1 = debts.value.findIndex(d => d.id === debt.id);
-          const originalIndex2 = debts.value.findIndex(d => d.id === targetDebt.id);
-          
+          const originalIndex2 = debts.value.findIndex(d => d.id === currentList[index - 1].id);
           const temp = debts.value[originalIndex1];
           debts.value[originalIndex1] = debts.value[originalIndex2];
           debts.value[originalIndex2] = temp;
@@ -746,10 +845,8 @@ function doPost(e) {
         const currentList = filteredDebts.value;
         const index = currentList.findIndex(d => d.id === debt.id);
         if (index !== -1 && index < currentList.length - 1) {
-          const targetDebt = currentList[index + 1];
           const originalIndex1 = debts.value.findIndex(d => d.id === debt.id);
-          const originalIndex2 = debts.value.findIndex(d => d.id === targetDebt.id);
-          
+          const originalIndex2 = debts.value.findIndex(d => d.id === currentList[index + 1].id);
           const temp = debts.value[originalIndex1];
           debts.value[originalIndex1] = debts.value[originalIndex2];
           debts.value[originalIndex2] = temp;
@@ -757,102 +854,36 @@ function doPost(e) {
         }
       };
 
-      const deleteDebt = (debt) => {
-        if (confirm(`「${debt.title}」を本当に削除する？\n（これまでのお返し記録も全部消えちゃうよ！）`)) {
-          debts.value = debts.value.filter(d => d.id !== debt.id);
-          saveData();
-          showToast('削除したよ🗑️');
-        }
-      };
-
       const openRepayModal = (debt) => {
-        targetDebt.value = debt;
-        repayAmount.value = ''; // デフォルトを空白に変更しました
-        repayDate.value = getToday();
-        showRepayModal.value = true;
+        targetDebt.value = debt; repayAmount.value = ''; repayDate.value = getToday(); showRepayModal.value = true;
       };
 
       const submitRepay = () => {
         if (!targetDebt.value || !repayAmount.value || repayAmount.value <= 0) return;
-        
-        targetDebt.value.repayments.push({
-          id: Date.now().toString(),
-          date: repayDate.value,
-          amount: parseInt(repayAmount.value, 10)
-        });
-        
+        targetDebt.value.repayments.push({ id: Date.now().toString(), date: repayDate.value, amount: parseInt(repayAmount.value, 10) });
         saveData();
-        showRepayModal.value = false;
-        targetDebt.value = null;
-        repayAmount.value = '';
+        showRepayModal.value = false; targetDebt.value = null; repayAmount.value = '';
         showToast('お返しを記録したよ！💖');
       };
 
-      // --- 編集アクション ---
-      const openEditModal = (debt) => {
-        targetDebt.value = debt;
-        // 現在のデータをコピーして編集フォームにセット
-        editData.value = {
-          title: debt.title,
-          memo: debt.memo || '',
-          amount: debt.isRegular ? '' : debt.amount,
-          isRegular: debt.isRegular
-        };
-        showEditModal.value = true;
-      };
-
-      const submitEdit = () => {
-        if (!targetDebt.value || !editData.value.title) {
-          alert('何の代金か入力してね！');
-          return;
-        }
-        if (!editData.value.isRegular && (!editData.value.amount || editData.value.amount <= 0)) {
-          alert('正しい金額を入力してね！');
-          return;
-        }
-
-        // データの更新
-        targetDebt.value.title = editData.value.title;
-        targetDebt.value.memo = editData.value.memo;
-        if (!targetDebt.value.isRegular) {
-          targetDebt.value.amount = parseInt(editData.value.amount, 10);
-        }
-
-        saveData();
-        showEditModal.value = false;
-        targetDebt.value = null;
-        showToast('内容を修正したよ！✎');
-      };
-
-      // --- データ保存・読み込み (ローカル & GAS) ---
-
       const saveData = () => {
         localStorage.setItem('debtData', JSON.stringify(debts.value));
-        if (gasUrl.value && !viewOnly.value) {
-          saveToGas(true); // バックグラウンドでGASへ保存
-        }
+        if (gasUrl.value && !viewOnly.value) saveToGas(true); 
       };
 
-      const saveGasUrl = () => {
-        localStorage.setItem('gasUrl', gasUrl.value);
-      };
+      const saveGasUrl = () => localStorage.setItem('gasUrl', gasUrl.value);
 
       const saveToGas = async (isBackground = false) => {
         if (!gasUrl.value) return;
         if (!isBackground) loading.value = true;
-        
         try {
-          // CORS制約を回避するため text/plain で POST 送信
           await fetch(gasUrl.value, {
-            method: 'POST',
-            mode: 'no-cors', 
-            headers: { 'Content-Type': 'text/plain' },
+            method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain' },
             body: JSON.stringify({ debts: debts.value })
           });
           if (!isBackground) showToast('雲(GAS)に保存したよ☁️✨');
         } catch(e) {
-          console.error(e);
-          if (!isBackground) alert('保存に失敗しちゃった💦 電波を確認してね。');
+          if (!isBackground) customAlert('保存に失敗しちゃった💦 電波を確認してね。');
         } finally {
           loading.value = false;
         }
@@ -870,288 +901,175 @@ function doPost(e) {
             showToast('雲(GAS)から読み込んだよ☁️💖');
           }
         } catch(e) {
-          console.error(e);
-          // 妻用モードで初回ロードに失敗した時は静かにしておく
         } finally {
           loading.value = false;
         }
       };
 
-      // --- 妻用モード 救済設定機能 ---
       const setupWifeMode = () => {
         try {
           const urlObj = new URL(wifeSetupUrl.value);
           let isView = urlObj.searchParams.get('viewOnly');
           let urlGas = urlObj.searchParams.get('gasUrl');
-
-          // もしハッシュ（#以降）に残っていた場合も念のため対応
           if (!urlGas && urlObj.hash) {
             const hashParams = new URLSearchParams(urlObj.hash.substring(1));
             if (hashParams.has('viewOnly')) isView = hashParams.get('viewOnly');
             if (hashParams.has('gasUrl')) urlGas = hashParams.get('gasUrl');
           }
-
           if (isView === '1' && urlGas) {
             gasUrl.value = decodeURIComponent(urlGas);
             localStorage.setItem('gasUrl', gasUrl.value);
-            localStorage.setItem('viewOnly', '1'); // ここで端末（ホームアプリ）に「妻モード」であることを記憶させる
+            localStorage.setItem('viewOnly', '1');
             viewOnly.value = true;
             loadFromGas();
             showToast('妻用モードを設定したよ！💖');
             wifeSetupUrl.value = '';
           } else {
-            alert('URLが正しくないみたい💦 夫から送られたURLをそのままコピーしてね。');
+            customAlert('URLが正しくないみたい💦 夫から送られたURLをそのままコピーしてね。');
           }
         } catch (e) {
-          alert('LINEで送られたURLを貼り付けてね！');
+          customAlert('LINEで送られたURLを貼り付けてね！');
         }
       };
 
-      // --- ファイルでのバックアップ・復元機能 ---
-
-      // 短くしたデータを元に戻す（文字列・ファイル共通の補助機能）
       const expandData = (minData) => {
         if (minData.length === 0) return [];
-        
-        // 旧形式 (プロパティが i, d, t などのオブジェクトになっている場合) のサポート
         if (!Array.isArray(minData[0])) {
           return minData.map(d => ({
             id: d.i, date: d.d, title: d.t, memo: d.m, amount: d.a,
-            isRegular: d.ir === 1, excludeFromTotal: d.ex === 1,
-            repayments: d.r ? d.r.map(rep => ({ id: rep.i, date: rep.d, amount: rep.a })) : [],
-            showHistory: false
+            isRegular: d.ir === 1, excludeFromTotal: d.ex === 1, excludeFromChart: d.ec === 1,
+            repayments: d.r ? d.r.map(rep => ({ id: rep.i, date: rep.d, amount: rep.a })) : [], showHistory: false
           }));
         }
-
-        // 新形式 (完全に配列化された極小データ)
         return minData.map(d => ({
           id: d[0], date: d[1], title: d[2], memo: d[3], amount: d[4],
-          isRegular: d[5] === 1, excludeFromTotal: d[6] === 1,
-          repayments: d[7] ? d[7].map(rep => ({ id: rep[0], date: rep[1], amount: rep[2] })) : [],
-          showHistory: false
+          isRegular: d[5] === 1, excludeFromTotal: d[6] === 1, excludeFromChart: d[8] === 1, 
+          repayments: d[7] ? d[7].map(rep => ({ id: rep[0], date: rep[1], amount: rep[2] })) : [], showHistory: false
         }));
       };
 
       const downloadBackupFile = () => {
-        // 分かりやすいように、そのままのデータ形式(JSON)でファイル出力する
         const jsonStr = JSON.stringify(debts.value, null, 2);
         const blob = new Blob([jsonStr], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
-        a.href = url;
-        a.download = '記録（借金）.json';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        a.href = url; a.download = '記録（借金）.json';
+        document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
         showToast('ファイルに保存したよ！📄');
       };
 
       const uploadBackupFile = (event) => {
         const file = event.target.files[0];
         if (!file) return;
-
         const reader = new FileReader();
         reader.onload = (e) => {
           const content = e.target.result.trim();
           try {
-            // まず普通のJSONとして読み込めるか試す
             let data = JSON.parse(content);
-            if (Array.isArray(data)) {
-              if (data.length > 0 && Array.isArray(data[0])) {
-                 debts.value = expandData(data);
-              } else {
-                 debts.value = data; // 通常のオブジェクト配列
-              }
-            } else if (data && data.debts) {
-              debts.value = data.debts;
-            } else {
-               throw new Error();
-            }
-            saveData();
-            alert('ファイルからデータを復元したよ！🌟\nホーム画面で確認してね。');
+            if (Array.isArray(data)) debts.value = (data.length > 0 && Array.isArray(data[0])) ? expandData(data) : data;
+            else if (data && data.debts) debts.value = data.debts;
+            else throw new Error();
+            saveData(); customAlert('ファイルからデータを復元したよ！🌟\nホーム画面で確認してね。');
           } catch (err) {
-            // JSONでなかった場合、前回の「圧縮文字列」だけが入ったテキストファイルかもしれない
             try {
               let jsonStr = LZString.decompressFromBase64(content);
               if (!jsonStr) jsonStr = LZString.decompressFromEncodedURIComponent(content);
               if (jsonStr) {
                 const data = JSON.parse(jsonStr);
-                if (Array.isArray(data)) {
-                  if (data.length > 0 && Array.isArray(data[0])) {
-                     debts.value = expandData(data);
-                  } else {
-                     debts.value = data;
-                  }
-                } else if (data && data.debts) {
-                  debts.value = data.debts;
-                } else {
-                  throw new Error();
-                }
-                saveData();
-                alert('ファイルからデータを復元したよ！🌟\nホーム画面で確認してね。');
-              } else {
-                throw new Error();
-              }
-            } catch (err2) {
-              alert('ファイルの読み込みに失敗しちゃった💦\n正しいファイルを選んでね。');
-            }
+                if (Array.isArray(data)) debts.value = (data.length > 0 && Array.isArray(data[0])) ? expandData(data) : data;
+                else if (data && data.debts) debts.value = data.debts;
+                else throw new Error();
+                saveData(); customAlert('ファイルからデータを復元したよ！🌟\nホーム画面で確認してね。');
+              } else throw new Error();
+            } catch (err2) { customAlert('ファイルの読み込みに失敗しちゃった💦\n正しいファイルを選んでね。'); }
           }
-          event.target.value = ''; // ファイル選択をリセット
+          event.target.value = ''; 
         };
         reader.readAsText(file);
       };
 
-      // 過去の「文字列」からの復元機能
       const importBackup = () => {
         if (!backupString.value) return;
         try {
-          // まずBase64圧縮から解凍
           let jsonStr = LZString.decompressFromBase64(backupString.value);
-          // 失敗したら古い形式(URIエンコード)から解凍
-          if (!jsonStr) {
-            jsonStr = LZString.decompressFromEncodedURIComponent(backupString.value);
-          }
-          // それでもダメならそのままのJSON文字列かも
-          if (!jsonStr) {
-            jsonStr = backupString.value;
-          }
+          if (!jsonStr) jsonStr = LZString.decompressFromEncodedURIComponent(backupString.value);
+          if (!jsonStr) jsonStr = backupString.value;
           
           const data = JSON.parse(jsonStr);
-          if (Array.isArray(data)) {
-            if (data.length > 0 && Array.isArray(data[0])) {
-               debts.value = expandData(data);
-            } else {
-               debts.value = data;
-            }
-          } else if (data && data.debts) {
-            debts.value = data.debts;
-          } else {
-            throw new Error("Invalid Format");
-          }
+          if (Array.isArray(data)) debts.value = (data.length > 0 && Array.isArray(data[0])) ? expandData(data) : data;
+          else if (data && data.debts) debts.value = data.debts;
+          else throw new Error();
           
-          saveData();
-          alert('文字列からのデータ復元が完了したよ！🌟\nホーム画面で確認してね。');
+          saveData(); customAlert('文字列からのデータ復元が完了したよ！🌟\nホーム画面で確認してね。');
           backupString.value = '';
-        } catch(e) {
-          alert('文字列が間違っているみたい…💦 コピーし忘れている文字がないか確認してね。');
-        }
+        } catch(e) { customAlert('文字列が間違っているみたい…💦 コピーし忘れている文字がないか確認してね。'); }
       };
-
-      // --- 妻への共有機能 ---
 
       const generateShareUrl = () => {
-        if (!gasUrl.value) {
-          alert('先にGASのURLを入力して「雲へ保存する」してね！');
-          return;
-        }
+        if (!gasUrl.value) return customAlert('先にGASのURLを入力して「雲へ保存する」してね！');
         const baseUrl = window.location.origin + window.location.pathname;
-        
-        // パラメータが一番残りやすい「?」の形式に戻しました
         const shareUrl = `${baseUrl}?viewOnly=1&gasUrl=${encodeURIComponent(gasUrl.value)}`;
         
-        // クリップボードにコピー
         if(navigator.clipboard && window.isSecureContext) {
           navigator.clipboard.writeText(shareUrl).then(() => {
-            alert('URLをコピーしたよ！LINEなどで奥様に送ってね💌\n\n【重要】\n奥様には「LINEで開いてSafariからホーム画面に追加してね」と伝えてください。');
-          }).catch(() => {
-            prompt('下のURLをコピーして送ってね💌', shareUrl);
-          });
+            customAlert('URLをコピーしたよ！LINEなどで奥様に送ってね💌\n\n【重要】\n奥様には「LINEで開いてSafariからホーム画面に追加してね」と伝えてください。');
+          }).catch(() => { shareUrlData.value = shareUrl; });
         } else {
-          // http環境などのフォールバック
-          prompt('下のURLをコピーして送ってね💌', shareUrl);
+          shareUrlData.value = shareUrl;
         }
       };
-
-      // --- ユーティリティ ---
 
       const formatDate = (dateStr) => {
         const d = new Date(dateStr);
         return `${d.getFullYear()}/${(d.getMonth()+1).toString().padStart(2,'0')}/${d.getDate().toString().padStart(2,'0')}`;
       };
 
-      const showToast = (msg) => {
-        // 簡単な通知（今回はalertを使用）
-        setTimeout(() => alert(msg), 10);
-      };
-
-      // --- 初期化 ---
       onMounted(() => {
-        // 1. 通常のクエリパラメータ（?以降）をチェック
         const params = new URLSearchParams(window.location.search);
-        let isView = params.get('viewOnly');
-        let urlGas = params.get('gasUrl');
-
-        // 2. 念のためハッシュパラメータ（#以降）もチェック
+        let isView = params.get('viewOnly'); let urlGas = params.get('gasUrl');
         if (window.location.hash) {
-          const hashStr = window.location.hash.substring(1); // #を取り除く
-          const hashParams = new URLSearchParams(hashStr);
+          const hashParams = new URLSearchParams(window.location.hash.substring(1));
           if (hashParams.has('viewOnly')) isView = hashParams.get('viewOnly');
           if (hashParams.has('gasUrl')) urlGas = hashParams.get('gasUrl');
         }
 
-        if (urlGas) {
-          gasUrl.value = decodeURIComponent(urlGas);
-          localStorage.setItem('gasUrl', gasUrl.value);
-        } else {
-          gasUrl.value = localStorage.getItem('gasUrl') || '';
-        }
+        if (urlGas) { gasUrl.value = decodeURIComponent(urlGas); localStorage.setItem('gasUrl', gasUrl.value); } 
+        else { gasUrl.value = localStorage.getItem('gasUrl') || ''; }
 
-        // LocalStorageのviewOnlyフラグも確認（ホーム画面から起動した場合、URLパラメータが消えていてもここで拾う）
         if (isView === '1' || localStorage.getItem('viewOnly') === '1') {
-          viewOnly.value = true;
-          currentTab.value = 'home';
-          if (isView === '1') {
-            localStorage.setItem('viewOnly', '1'); // スマホ内に妻モードであることを覚えさせる
-          }
+          viewOnly.value = true; currentTab.value = 'home';
+          if (isView === '1') localStorage.setItem('viewOnly', '1'); 
         }
 
-        // ローカルデータの読み込み
         const localData = localStorage.getItem('debtData');
-        if (localData) {
-          try {
-            debts.value = JSON.parse(localData);
-          } catch(e) {}
-        }
+        if (localData) { try { debts.value = JSON.parse(localData); } catch(e) {} }
+
+        const savedExcludedMonths = localStorage.getItem('excludedChartMonths');
+        if (savedExcludedMonths) { try { excludedChartMonths.value = JSON.parse(savedExcludedMonths); } catch(e){} }
         
-        // これまでのデータ（古い順）を、初回だけ新しい順に並び替えて保存し直す
         if (!localStorage.getItem('sorted_v1') && debts.value.length > 0) {
           debts.value.sort((a, b) => new Date(b.date) - new Date(a.date));
-          localStorage.setItem('sorted_v1', '1');
-          saveData();
+          localStorage.setItem('sorted_v1', '1'); saveData();
         }
-
-        // 妻用モード、またはGAS URL設定済みなら自動で最新を読み込む
-        if (gasUrl.value) {
-          loadFromGas();
-        }
+        if (gasUrl.value) loadFromGas();
       });
 
       return {
-        currentTab, debts, gasUrl, viewOnly, backupString, loading, filterStatus,
-        wifeSetupUrl, setupWifeMode, // 妻用設定の関数を追加
-        newDebt, showRepayModal, showManual, targetDebt, repayAmount, repayDate,
-        showEditModal, editData, // 編集モーダル用の変数を追加
+        alertDialog, confirmDialog, customAlert, customConfirm, toastMessage, shareUrlData,
+        currentTab, debts, gasUrl, viewOnly, backupString, loading, filterStatus, chartPeriod,
+        excludedChartMonths, restoreChartMonth, wifeSetupUrl, setupWifeMode,
+        newDebt, showRepayModal, showManual, showEditModal, editData, targetDebt, repayAmount, repayDate,
         totalRemain, regularPaidTotal, filteredDebts, getRemain, getPaidTotal,
-        addDebt, deleteDebt, moveUp, moveDown, openRepayModal, submitRepay, openEditModal, submitEdit, // 編集アクションを追加
-        saveGasUrl, saveToGas, loadFromGas,
-        downloadBackupFile, uploadBackupFile, importBackup, generateShareUrl,
-        formatDate
+        addDebt, deleteDebt, openEditModal, submitEdit, moveUp, moveDown, openRepayModal, submitRepay,
+        saveGasUrl, saveToGas, loadFromGas, downloadBackupFile, uploadBackupFile, importBackup, generateShareUrl, formatDate
       };
     }
   }).mount('#app');
 </script>
 
 <style>
-  /* フェードインアニメーション */
-  .animate-fade-in {
-    animation: fadeIn 0.4s ease-out;
-  }
-  @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-  /* iPhoneX以降のセーフエリア対応 */
+  .animate-fade-in { animation: fadeIn 0.4s ease-out; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
   .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
 </style>
 </body>
