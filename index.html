@@ -741,20 +741,28 @@ function doPost(e) {
           options: {
             responsive: true,
             maintainAspectRatio: false,
-            // グラフの「タップしやすさ」を劇的にアップさせる魔法の設定
-            interaction: {
-              mode: 'index',
-              intersect: false, 
-            },
             scales: {
               y: { beginAtZero: true }
             },
+            // タッチ操作に確実に反応させるためのイベント設定
             onClick: (event, elements, chart) => {
+              let dataIndex = -1;
+              
+              // 方法1: Chart.jsが要素を拾えた場合
               if (elements && elements.length > 0) {
-                const dataIndex = elements[0].index;
+                dataIndex = elements[0].index;
+              } 
+              // 方法2: X軸の座標から強制的に割り出す (これで大体どこ押しても反応する)
+              else if (chart.scales.x) {
+                const xValue = chart.scales.x.getValueForPixel(event.native ? event.native.x : event.x);
+                if (xValue !== undefined && xValue !== null && xValue >= 0 && xValue < chart.data.labels.length) {
+                  dataIndex = xValue;
+                }
+              }
+
+              if (dataIndex !== -1) {
                 const clickedLabel = chart.data.labels[dataIndex];
                 if (clickedLabel && !excludedChartMonths.value.includes(clickedLabel)) {
-                  // 確認画面を表示して非表示にする
                   customConfirm(`「${clickedLabel}」のグラフを非表示にする？\n（下のボタンからすぐに元に戻せるよ！）`, () => {
                     excludedChartMonths.value.push(clickedLabel);
                     localStorage.setItem('excludedChartMonths', JSON.stringify(excludedChartMonths.value));
